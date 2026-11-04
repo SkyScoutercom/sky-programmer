@@ -1,6 +1,8 @@
 """Every question the app asks the operator. Tests replace this class, so no test depends on clicking a dialog."""
 from __future__ import annotations
 
+from html import escape
+
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -42,7 +44,8 @@ class TypedConfirm(QDialog):
     Enter only works once the word is right, and Esc cancels.
     """
 
-    def __init__(self, parent, title, body, prompt, action, rows=None, warnings=(), word="YES", headers=None):
+    def __init__(self, parent, title, body, prompt, action, rows=None, warnings=(), word="YES", headers=None,
+                 danger=False):  # fmt: skip
         super().__init__(parent)
         self.word = word
         self.setWindowTitle(title)
@@ -68,7 +71,7 @@ class TypedConfirm(QDialog):
         lay.addWidget(self.answer)
         self.buttons = QDialogButtonBox()
         self.go = self.buttons.addButton(action, QDialogButtonBox.ButtonRole.AcceptRole)
-        self.go.setObjectName("Primary")
+        self.go.setObjectName("Danger" if danger else "Primary")
         self.go.setEnabled(False)
         self.go.setAutoDefault(False)
         cancel = self.buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
@@ -93,7 +96,8 @@ class Prompts:
         return TypedConfirm(self.parent, *args, **kwargs).exec() == QDialog.DialogCode.Accepted
 
     def confirm_write(self, rows, warnings, target="") -> bool:
-        body = f"This is what would change on <b>{target}</b>." if target else "This is what would change on the board."
+        where = f"<b>{escape(target)}</b>" if target else "the board"
+        body = f"This is what would change on {where}."
         return self._typed("Review changes", body, ENGINE_PROMPT, "Write to board", rows, warnings)
 
     def confirm_start(self) -> bool:
@@ -108,17 +112,20 @@ class Prompts:
                            "Back up", rows, headers=("Field", "Last backup", "Board now"))  # fmt: skip
 
     def confirm_reset(self, preview: dict) -> bool:
-        lines = [f"Reset this folder to <b>{preview['target']}</b>. It can't be undone from this app."]
+        lines = [f"Reset <b>{escape(preview['dir'])}</b> to <b>{escape(preview['target'])}</b>. "
+                 "Uncommitted changes can't be brought back."]  # fmt: skip
         if preview["note"]:
-            lines.append(preview["note"])
-        rows = [("Uncommitted change", line) for line in preview["lost_files"]]
+            lines.append(escape(preview["note"]))
+        rows = [("Merge in progress", "It will be abandoned")] if preview["merge"] else []
+        rows += [("Uncommitted change", line) for line in preview["lost_files"]]
         rows += [("Local commit", line) for line in preview["dropped"]]
+        rows += [("Untracked file, replaced", line) for line in preview["overwritten"]]
         if not rows:
             lines.append("Nothing would be lost: this folder has no uncommitted changes or local commits.")
         if preview["untracked"]:
-            lines.append(f"{preview['untracked']} untracked file(s) will be kept.")
+            lines.append(f"{preview['untracked']} other untracked file(s) will be kept.")
         return self._typed("Reset the source folder", "<br><br>".join(lines), "Type RESET to discard what's listed:",
-                           "Reset", rows, word="RESET", headers=("What's lost", "Item"))  # fmt: skip
+                           "Reset", rows, word="RESET", headers=("What's lost", "Item"), danger=True)  # fmt: skip
 
     def _yes(self, title, text) -> bool:
         box = QMessageBox.warning(self.parent, title, text, QMessageBox.StandardButton.Yes
@@ -126,8 +133,13 @@ class Prompts:
         return box == QMessageBox.StandardButton.Yes
 
     def confirm_repl_resume(self) -> bool:
-        return self._yes("This resumes the script", "The script may be paused, and any REPL expression resumes it, "
-                         "which may move the motor or servo. Send it anyway?")  # fmt: skip
+        return self._typed("This resumes the script", "The script may be paused, and any REPL expression resumes it, "
+                           "which may move the motor or servo.", "Type YES to send it anyway:", "Send")  # fmt: skip
+
+    def confirm_power_cycled(self) -> bool:
+        return self._yes("Was it power-cycled?", "Only say yes if the board really was power-cycled since the pause. "
+                         "If it wasn't, the script is still paused, with no throttle or kill control, and this "
+                         "warning goes away.")  # fmt: skip
 
     def confirm_close_paused(self) -> bool:
         return self._yes("The script may be paused", "A paused script stays paused after you close this app, with no "

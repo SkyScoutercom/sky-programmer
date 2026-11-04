@@ -56,7 +56,7 @@ reason beside them. See [SAFETY.md](SAFETY.md#the-desktop-app).
 | `sky monitor [--log run.csv] [--seconds N]` | Live values and messages printed by scripts or C code |
 | `sky get [pattern] [--app] [--json]` | Read config fields, e.g. `sky get 'foc_*'` |
 | `sky set field=value ...` | Change motor config, e.g. `sky set motor_type=FOC` |
-| `sky backup` / `sky backups` | Save the motor and app config / list saved files |
+| `sky backup [--accept-drift]` / `sky backups` | Save the motor and app config / list saved files |
 | `sky diff <file>` | Compare the board with a backup |
 | `sky restore <file>` | Write a backup's motor config back |
 | `sky stop` / `sky start` | Pause the script and release the motor / run the stored script |

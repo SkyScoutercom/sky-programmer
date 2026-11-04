@@ -76,7 +76,8 @@ def qss(c: Palette) -> str:
     chevron, check = _asset(f"chevron-{c.name}.svg"), _asset(f"check-{c.name}.svg")
     return f"""
 QWidget {{ color: {c.ink}; font-size: 13px; }}
-QMainWindow, QDialog, QMessageBox, QStackedWidget, QStackedWidget > QWidget {{ background: {c.background}; }}
+QWidget:disabled {{ color: {c.disabled}; }}
+QMainWindow, QDialog, QMessageBox, #Pages, #Pages > QWidget {{ background: {c.background}; }}
 QLabel {{ background: transparent; }}
 QToolTip {{ background: {c.surface}; color: {c.ink}; border: 1px solid {c.border_strong}; padding: 4px 6px; }}
 
@@ -112,7 +113,7 @@ QPushButton:focus {{ border: 1px solid {c.primary}; }}
 QPushButton:disabled {{ color: {c.disabled}; border-color: {c.border}; background: {c.surface_alt}; }}
 QPushButton#Primary {{ background: {c.primary}; color: {c.on_primary}; border: 1px solid {c.primary}; }}
 QPushButton#Primary:hover {{ background: {c.primary_hover}; border-color: {c.primary_hover}; }}
-QPushButton#Primary:disabled {{ background: {c.border_strong}; border-color: {c.border_strong}; color: {c.surface}; }}
+QPushButton#Primary:disabled {{ background: {c.surface_alt}; border-color: {c.border}; color: {c.disabled}; }}
 QPushButton#Danger {{ color: {c.critical}; border-color: {c.critical}; }}
 QPushButton#Danger:hover {{ background: {c.invalid}; border-color: {c.critical}; }}
 QPushButton#Danger:disabled {{ color: {c.disabled}; border-color: {c.border}; }}
@@ -146,7 +147,7 @@ QCheckBox::indicator:hover {{ border-color: {c.primary}; }}
 QCheckBox::indicator:checked {{ background: {c.primary}; border-color: {c.primary}; image: url("{check}"); }}
 
 QTableWidget {{ background: {c.surface}; border: 1px solid {c.border}; border-radius: 14px; gridline-color: {c.grid};
-                selection-background-color: {c.accent_bg}; selection-color: {c.ink}; outline: 0; }}
+                selection-background-color: {c.grid}; selection-color: {c.ink}; outline: 0; }}
 QTableWidget::item {{ padding: 2px 6px; }}
 QHeaderView {{ background: transparent; }}
 QHeaderView::section {{ background: {c.surface_alt}; color: {c.muted}; border: none;

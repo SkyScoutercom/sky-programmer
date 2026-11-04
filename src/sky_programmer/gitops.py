@@ -13,14 +13,25 @@ The callers enforce the run-state gate: no pull or reset while a board is connec
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
 
 GIT_TIMEOUT_S = 30.0
 NET_TIMEOUT_S = 120.0
-_MAX_LISTED = 30
+_MAX_LISTED = 200
+
+# These would point git at a different repo from the folder named on screen, e.g. when started from a git hook.
+_ENV_NOT_INHERITED = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR",
+                      "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX",
+                      "GIT_ASKPASS", "SSH_ASKPASS")  # a graphical password window would sit behind the app  # fmt: skip
+
+
+class GitFailed(Exception):
+    """A query failed, so its answer is unknown. It must never be read as an empty answer."""
 
 
 def audit_path() -> Path:
@@ -29,15 +40,15 @@ def audit_path() -> Path:
 
 
 def is_app_repo(path) -> bool:
-    """A git checkout of this project, and nothing else."""
+    """Whether this folder looks like a checkout of this project. _problem() checks what git itself makes of it."""
     path = Path(path).expanduser()
     return (path / ".git").exists() and (path / "src" / "sky_programmer" / "__init__.py").is_file()
 
 
 def running_from(repo) -> bool:
-    """Whether the code running now is in this folder. If so, a pull changes this app the next time it starts."""
+    """Whether the code running now is this folder's own. Only then does a pull change this app at its next start."""
     try:
-        return Path(__file__).resolve().is_relative_to(Path(repo).expanduser().resolve())
+        return Path(__file__).resolve() == (Path(repo).expanduser() / "src/sky_programmer/gitops.py").resolve()
     except OSError:
         return False
 
@@ -52,21 +63,58 @@ def find_checkout():
 
 
 def _git(repo: Path, *args: str, timeout: float = GIT_TIMEOUT_S) -> subprocess.CompletedProcess:
-    env = dict(os.environ)
+    env = {k: v for k, v in os.environ.items() if k not in _ENV_NOT_INHERITED}
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GCM_INTERACTIVE"] = "never"
+    env["SSH_ASKPASS_REQUIRE"] = "never"
     env["LC_ALL"] = "C"
-    env.pop("GIT_ASKPASS", None)  # a graphical password window would sit behind the app with no explanation
-    env.pop("SSH_ASKPASS", None)
-    env.setdefault("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, errors="replace",
-                          timeout=timeout, env=env, stdin=subprocess.DEVNULL)  # fmt: skip
+    return subprocess.run(["git", "-C", str(repo), "-c", "core.askPass=", "-c", "submodule.recurse=false", *args],
+                          capture_output=True, text=True, errors="replace", timeout=timeout, env=env,
+                          stdin=subprocess.DEVNULL)  # fmt: skip
 
 
 def _text(repo: Path, *args: str) -> str:
-    """Trimmed output of a local query, or "" if it failed."""
+    """Trimmed output of a query that may fairly have no answer, such as a branch with no upstream."""
     r = _git(repo, *args)
     return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _must(repo: Path, *args: str) -> str:
+    """Output of a query that has to work."""
+    r = _git(repo, *args)
+    if r.returncode != 0:
+        raise GitFailed((r.stderr or r.stdout).strip() or f"git {args[0]} failed")
+    return r.stdout
+
+
+def _names(repo: Path, *args: str) -> set:
+    return {name for name in _must(repo, *args, "-z").split("\0") if name}
+
+
+def _problem(repo: Path) -> str:
+    """Why nothing should be done in this folder, or "". Git's own view counts: an empty .git makes it climb upwards."""
+    if not is_app_repo(repo):
+        return f"{repo} is not a checkout of SKY programmer, so nothing was done there."
+    r = _git(repo, "rev-parse", "--show-toplevel")
+    if r.returncode != 0:
+        return f"Git can't use {repo}, so nothing was done there: {_scrub(r.stderr.strip())}"
+    top = Path(r.stdout.strip()).resolve()
+    if top != repo.resolve():
+        return f"Git treats {top} as the repo here, not {repo}, so nothing was done."
+    return ""
+
+
+def _state(repo: Path) -> str:
+    """A fingerprint of the commit and the tracked files, to tell whether either has changed."""
+    parts = (_must(repo, "rev-parse", "HEAD"), _must(repo, "status", "--porcelain"), _must(repo, "diff", "HEAD"))
+    return hashlib.sha256("\0".join(parts).encode(errors="replace")).hexdigest()
+
+
+def _state_or_none(repo: Path):
+    try:
+        return _state(repo)
+    except (GitFailed, OSError, subprocess.SubprocessError):
+        return None
 
 
 def _audit(op: str, repo: Path, ok: bool, detail: str = "") -> None:
@@ -75,13 +123,18 @@ def _audit(op: str, repo: Path, ok: bool, detail: str = "") -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8") as f:
             f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')} {op} dir={repo} ok={ok} "
-                    f"{detail[:200].replace(chr(10), ' ')}\n")  # fmt: skip
+                    f"{_hide_credentials(detail)[:200].replace(chr(10), ' ')}\n")  # fmt: skip
     except OSError:
         pass
 
 
+def _hide_credentials(text: str) -> str:
+    return re.sub(r"(\w+://)[^/\s]*@", r"\1", text)
+
+
 def _scrub(text: str) -> str:
     """Commit subjects and filenames come from other people, so control characters become '·'."""
+    text = _hide_credentials(text)
     return "".join(ch if ch == "\n" or (" " <= ch != "\x7f") else "·" for ch in text)
 
 
@@ -101,19 +154,8 @@ def _age(seconds: float) -> str:
     return f"{h} h" if h < 48 else f"{h // 24} days"
 
 
-def _clean_url(url: str) -> str:
-    if "@" in url and "://" in url:
-        scheme, rest = url.split("://", 1)
-        return scheme + "://" + rest.split("@", 1)[-1]
-    return url
-
-
-def _fail(op: str, repo, text: str) -> dict:
-    return {"ok": False, "op": op, "output": text, "changed": False}
-
-
-def _not_this_project(repo) -> str:
-    return f"{repo} is not a checkout of SKY programmer, so nothing was done there."
+def _fail(op: str, text: str, changed: bool = False) -> dict:
+    return {"ok": False, "op": op, "output": text, "changed": changed}
 
 
 def status(repo) -> dict:
@@ -123,22 +165,26 @@ def status(repo) -> dict:
     if not out["is_repo"]:
         return out
     try:
+        problem = _problem(repo)
+        if problem:
+            out["error"] = problem
+            return out
         out["branch"] = _text(repo, "rev-parse", "--abbrev-ref", "HEAD") or "?"
         out["head"] = _text(repo, "rev-parse", "--short=12", "HEAD")
-        dirty = [line for line in _git(repo, "status", "--porcelain").stdout.splitlines() if line.strip()]
+        dirty = [line for line in _must(repo, "status", "--porcelain").splitlines() if line.strip()]
         out["dirty"] = len(dirty)
-        out["dirty_files"] = [line[:100] for line in dirty[:_MAX_LISTED]]
-        out["remote"] = _clean_url(_text(repo, "remote", "get-url", "origin"))
+        out["dirty_files"] = [line[:100] for line in dirty[:30]]
+        out["remote"] = _hide_credentials(_text(repo, "remote", "get-url", "origin"))
         out["upstream"] = _text(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
         counts = _text(repo, "rev-list", "--left-right", "--count", "@{upstream}...HEAD").split()
         if len(counts) == 2:
             out["behind"], out["ahead"] = int(counts[0]), int(counts[1])
         fetch_head = _text(repo, "rev-parse", "--git-path", "FETCH_HEAD")
         try:
-            out["fetched_ago"] = time.time() - (repo / fetch_head).stat().st_mtime
+            out["fetched_ago"] = time.time() - (repo / fetch_head).stat().st_mtime if fetch_head else None
         except OSError:
             out["fetched_ago"] = None
-    except (OSError, subprocess.SubprocessError) as e:
+    except (GitFailed, OSError, subprocess.SubprocessError) as e:
         out["error"] = str(e)
     return out
 
@@ -148,7 +194,7 @@ def report(repo, st: dict | None = None) -> str:
     repo = Path(repo).expanduser()
     st = st if st is not None else status(repo)
     if not st.get("is_repo"):
-        return _not_this_project(repo)
+        return f"{repo} is not a checkout of SKY programmer."
     if st.get("error"):  # missing keys must not turn into a healthy-looking report
         return _scrub(f"branch     {st.get('branch', '?')}\n\nStatus incomplete: {st['error']}")
     lines = [f"branch     {st['branch']} @ {st['head']}"]
@@ -172,80 +218,106 @@ def report(repo, st: dict | None = None) -> str:
         lines.append("uncommitted: none")
     lines.extend(["", "recent commits:"])
     try:
-        log = _git(repo, "log", "--oneline", "--no-color", "--no-decorate", "-8").stdout
-    except (OSError, subprocess.SubprocessError) as e:
+        log = _must(repo, "log", "--oneline", "--no-color", "--no-decorate", "-8")
+    except (GitFailed, OSError, subprocess.SubprocessError) as e:
         log = f"could not read the log: {e}"
     lines.extend(f"  {line[:100]}" for line in log.splitlines() if line.strip())
     return _scrub("\n".join(lines))
 
 
 def pull(repo) -> dict:
-    """--ff-only: a diverged branch is reported, not merged."""
+    """--ff-only: a diverged branch is reported, not merged. `changed` means the code differs, however it ended."""
     repo = Path(repo).expanduser()
-    if not is_app_repo(repo):
-        return _fail("pull", repo, _not_this_project(repo))
-    before = _text(repo, "rev-parse", "HEAD")
+    problem = _problem(repo)
+    if problem:
+        return _fail("pull", problem)
+    before = _state_or_none(repo)
+    ok, output = False, ""
     try:
         r = _git(repo, "pull", "--ff-only", timeout=NET_TIMEOUT_S)
+        ok = r.returncode == 0
+        output = _scrub(_trim(r.stdout + ("\n" + r.stderr if r.stderr else "")))
     except subprocess.TimeoutExpired:
-        _audit("pull", repo, False, "timeout")
-        return _fail("pull", repo, f"Timed out after {NET_TIMEOUT_S:.0f} s. Is the network up?")
+        output = f"Timed out after {NET_TIMEOUT_S:.0f} s. Is the network up?"
     except (OSError, subprocess.SubprocessError) as e:
-        _audit("pull", repo, False, str(e))
-        return _fail("pull", repo, f"Could not run git: {e}")
-    ok = r.returncode == 0
-    output = _scrub(_trim(r.stdout + ("\n" + r.stderr if r.stderr else "")))
+        output = f"Could not run git: {e}"
     _audit("pull", repo, ok, output.splitlines()[-1] if output else "")
     if not ok and ("fast-forward" in output or "diverg" in output):
         output += "\n\nThis folder and GitHub have both changed, so nothing was merged. Reset makes it match GitHub."
     if not ok and ("could not read Username" in output or "Authentication failed" in output):
         output += "\n\nGit has no saved login for GitHub here. Run `gh auth setup-git` or pull once in a terminal."
-    return {"ok": ok, "op": "pull", "output": output, "changed": _text(repo, "rev-parse", "HEAD") != before}
+    after = _state_or_none(repo)
+    return {"ok": ok, "op": "pull", "output": output, "changed": before is None or after != before}
+
+
+def _would_overwrite(repo: Path, target: str) -> set:
+    """Untracked and ignored paths the reset would replace. Reset only spares them if the target has nothing there."""
+    others = _names(repo, "ls-files", "--others")
+    wanted = _names(repo, "ls-tree", "-r", "--name-only", target)
+    hit = others & wanted
+    for name in others:  # an untracked folder where the target has a file
+        if any(str(parent) in wanted for parent in Path(name).parents):
+            hit.add(name)
+    for name in wanted:  # an untracked file where the target has a folder
+        hit.update(str(parent) for parent in Path(name).parents if str(parent) in others)
+    return hit
 
 
 def reset_preview(repo) -> dict:
     """Everything a reset would throw away. Fetches first when it can, so the target is what GitHub has now."""
     repo = Path(repo).expanduser()
-    if not is_app_repo(repo):
-        return _fail("reset", repo, _not_this_project(repo))
+    problem = _problem(repo)
+    if problem:
+        return _fail("reset", problem)
     note = ""
     try:
-        fetched = _git(repo, "fetch", timeout=NET_TIMEOUT_S)
-        if fetched.returncode != 0:
+        if _git(repo, "fetch", timeout=NET_TIMEOUT_S).returncode != 0:
             note = "GitHub couldn't be reached, so this uses what was last fetched."
     except (OSError, subprocess.SubprocessError):
         note = "GitHub couldn't be reached, so this uses what was last fetched."
-    upstream = _text(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
-    target = upstream or "HEAD"
-    dirty = [line for line in _git(repo, "status", "--porcelain").stdout.splitlines() if line.strip()]
-    dropped = _git(repo, "log", "--oneline", "--no-decorate", f"{target}..HEAD").stdout.splitlines()
-    return {
-        "ok": True, "op": "reset", "output": "", "target": target,
-        "commit": _text(repo, "rev-parse", target),
-        "head": _text(repo, "rev-parse", "--short=12", "HEAD"),
-        "lost_files": [_scrub(line[:100]) for line in dirty if not line.startswith("??")],
-        "untracked": sum(line.startswith("??") for line in dirty),
-        "dropped": [_scrub(line[:100]) for line in dropped],
-        "note": note,
-    }  # fmt: skip
-
-
-def reset_hard(repo, commit: str, target: str) -> dict:
-    """reset --hard to the commit the operator reviewed. If the target has moved since, nothing happens."""
-    repo = Path(repo).expanduser()
-    if not is_app_repo(repo):
-        return _fail("reset", repo, _not_this_project(repo))
-    if not commit or _text(repo, "rev-parse", target) != commit:
-        return _fail("reset", repo, f"{target} has changed since you reviewed this, so nothing was reset.")
-    before = _text(repo, "rev-parse", "--short=12", "HEAD")
     try:
+        upstream = _text(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+        target = upstream or "HEAD"
+        commit = _must(repo, "rev-parse", target).strip()
+        dirty = [line for line in _must(repo, "status", "--porcelain").splitlines() if line.strip()]
+        dropped = _must(repo, "log", "--oneline", "--no-decorate", f"{target}..HEAD").splitlines()
+        overwritten = _would_overwrite(repo, target)
+        kept = _names(repo, "ls-files", "--others", "--exclude-standard") - overwritten
+        return {
+            "ok": True, "op": "reset", "output": "", "dir": str(repo), "target": target, "commit": commit,
+            "head": _must(repo, "rev-parse", "--short=12", "HEAD").strip(),
+            "lost_files": [_scrub(line[:100]) for line in dirty if not line.startswith("??")][:_MAX_LISTED],
+            "overwritten": [_scrub(name[:100]) for name in sorted(overwritten)][:_MAX_LISTED],
+            "dropped": [_scrub(line[:100]) for line in dropped][:_MAX_LISTED],
+            "merge": _git(repo, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0,
+            "untracked": len(kept),
+            "state": _state(repo),
+            "note": note,
+        }  # fmt: skip
+    except (GitFailed, OSError, subprocess.SubprocessError) as e:
+        return _fail("reset", _scrub(f"Couldn't work out what a reset would change, so nothing was done: {e}"))
+
+
+def reset_hard(repo, preview: dict) -> dict:
+    """reset --hard to the commit the operator reviewed. If the target or folder moved since, nothing happens."""
+    repo = Path(repo).expanduser()
+    problem = _problem(repo)
+    if problem:
+        return _fail("reset", problem)
+    commit, target = preview["commit"], preview["target"]
+    try:
+        if _must(repo, "rev-parse", target).strip() != commit:
+            return _fail("reset", f"{target} has changed since you reviewed this, so nothing was reset.")
+        if _state(repo) != preview["state"]:
+            return _fail("reset", "This folder has changed since you reviewed this, so nothing was reset.")
+        before = _must(repo, "rev-parse", "--short=12", "HEAD").strip()
         r = _git(repo, "reset", "--hard", commit)
-    except (OSError, subprocess.SubprocessError) as e:
+    except (GitFailed, OSError, subprocess.SubprocessError) as e:
         _audit("reset", repo, False, str(e))
-        return _fail("reset", repo, f"Could not run git: {e}")
+        return _fail("reset", _scrub(f"Could not reset: {e}"), _state_or_none(repo) != preview["state"])
     ok = r.returncode == 0
     output = _scrub(_trim(r.stdout + ("\n" + r.stderr if r.stderr else "")))
     _audit("reset", repo, ok, f"{before} -> {target} {commit[:12]}")
     if ok:
         output = f"reset --hard {target}\n{output}\n\nThe folder was at {before}. To go back: git reset --hard {before}"
-    return {"ok": ok, "op": "reset", "output": output, "changed": ok}
+    return {"ok": ok, "op": "reset", "output": output, "changed": ok or _state_or_none(repo) != preview["state"]}

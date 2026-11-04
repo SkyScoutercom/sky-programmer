@@ -17,6 +17,7 @@ PAUSE_TIMEOUT_S = 4.0
 PAUSE_FAILED_AFTER_S = 1.5  # the firmware answers "no" at once if no script exists, after 2 s if the pause failed
 SETTLE_S = 0.5
 READBACK_TRIES = 5
+REPL_WAIT_S = 1.2  # the firmware may spend 1 s trying to pause (pause_eval) before it answers
 
 MONITOR_COLUMNS = ("t", "erpm", "duty", "motor_a", "input_a", "bus_v", "fet_c", "motor_c", "fault")
 
@@ -106,8 +107,16 @@ class Programmer:
 
     def baseline(self):
         """The backup that defines this board's settings for the drift check, or None."""
-        ident = self.identify()
-        return backup.latest(self.backup_dir, ident["uuid"], ident["fw"])
+        ident, lay = self.identify(), self.layout()
+
+        def decodes(doc) -> bool:  # a damaged file must not lock this board out of backups and writes
+            try:
+                config.decode(doc["mc_blob"], lay, MC_ROOT)
+                return True
+            except SafetyRefusal:
+                return False
+
+        return backup.latest(self.backup_dir, ident["uuid"], ident["fw"], usable=decodes)
 
     def baseline_drift(self) -> dict:
         """{field: (baseline, live)}. A new manual backup would make these the board's settings."""
@@ -219,10 +228,10 @@ class Programmer:
         """
         lay, ident = self.layout(), self.identify()
         self.require_idle(plan.before)  # first, so a turning engine never loses its script to this command
+        self._check_supply_stays_in_range(plan.after)  # for the same reason, and because time may have passed
         self._pause_script()
         try:
             self.require_idle(plan.before)
-            self._check_supply_stays_in_range(plan.after)  # again: time may have passed since planning
             if self.read_mc_stable() != plan.current:
                 raise SafetyRefusal("the motor config changed since this write was planned.")
             app_blob = self._read_blob(p.COMM_GET_APPCONF)
@@ -230,13 +239,12 @@ class Programmer:
         except SafetyRefusal as e:
             raise SafetyRefusal(f"{e} Nothing was written. The script is now paused: run `sky start` "
                                 "or power-cycle to run it again.") from e
+        except CommsError as e:
+            raise CommsError(f"{e} Nothing was written, but the script may now be paused.") from e
         self.say(f"Backup saved: {saved}")
 
         acked = self._send_config(plan.target)
-        try:
-            got = self._read_back()
-        except CommsError as e:
-            raise CommsError(f"{e} Backup: {saved}") from e
+        got = self._read_back(saved)
         try:
             after = config.decode(got, lay, MC_ROOT)
         except SafetyRefusal as e:
@@ -282,19 +290,22 @@ class Programmer:
             self.say("No reply to the write. Not retrying; reading the board to see what happened.")
             return False
 
-    def _read_back(self) -> bytes:
+    def _read_back(self, saved) -> bytes:
         for _ in range(READBACK_TRIES):
             self.link.sleep(SETTLE_S)
             try:
                 return self._read_blob(p.COMM_GET_MCCONF)
             except CommsError:
                 continue
+        # The firmware's parser has no timeout: after a cut-off frame it keeps collecting bytes, so a power-cycle may be
+        # what brings it back.
         raise CommsError("the board stopped answering after the write, so its state is unknown. Don't retry the "
-                         "write. Reconnect and run `sky status`, then `sky diff <backup>`.")
+                         "write. Reconnect and run `sky status`, then `sky diff <backup>`. If it still doesn't answer, "
+                         f"power-cycle it with the engine stopped. Backup: {saved}")
 
     def _rollback(self, plan: Plan, saved) -> None:
         self._send_config(plan.current)
-        back = config.decode(self._read_back(), self.layout(), MC_ROOT)
+        back = config.decode(self._read_back(saved), self.layout(), MC_ROOT)
         if config.differences(plan.before, back, self.layout()):
             raise VerifyFailed(f"the rollback did not fully apply either. Run `sky diff {saved}`, "
                                f"then `sky restore {saved}` after checking the board.")
@@ -355,16 +366,24 @@ class Programmer:
         self.link.send(bytes([p.COMM_TERMINAL_CMD]) + command.encode() + b"\0")
         return self.link.collect_prints(wait)
 
-    def repl(self, text: str, *, allow_motor=False, wait: float = 0.6) -> list[str]:
+    def repl(self, text: str, *, allow_motor=False, wait: float = REPL_WAIT_S) -> list[str]:
         self.layout()  # the word lists are only reviewed for supported firmware
+        text = text.strip()  # the firmware only spots a meta command at the very start; " :help" would be an expression
+        self.link.drain()
+        earlier = self.link.take_prints()  # so an old message can't be taken for this expression's answer
         self.link.send(bytes([p.COMM_LISP_REPL_CMD]) + text.encode() + b"\0", repl_allow_motor=allow_motor)
         replies = self.link.collect_prints(wait)
-        # The firmware resumes the evaluator for any expression it accepts, even one that fails to parse. It does not
-        # if it couldn't pause first, or if it ignored the line (within 0.5 s of the last), which gives no reply.
-        resumed = replies and not any("Could not pause" in line for line in replies)
-        if resumed and not text.strip().startswith(":"):
-            self.script_paused = False
-        return replies
+        if not text.startswith(":"):
+            self._note_repl_outcome(replies)
+        return earlier + replies
+
+    def _note_repl_outcome(self, replies: list) -> None:
+        """What an expression did to the script, from the firmware's COMM_LISP_REPL_CMD handler in lispif.c."""
+        if any(line.startswith(("Could not pause", "Not enough memory")) for line in replies):
+            self.script_paused = True  # never resumed, and a pause that timed out stays pending
+        elif any(line.startswith(">") for line in replies):
+            self.script_paused = False  # "> value" is printed when the expression finishes, so the evaluator ran
+        # Anything else proves nothing: it may have been ignored (within 0.5 s of the last), or it's still running.
 
     def forget_pause(self) -> None:
         """The operator says the board was power-cycled, which restarts the script. The board can't confirm it."""

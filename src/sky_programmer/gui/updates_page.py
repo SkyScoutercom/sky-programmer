@@ -1,6 +1,7 @@
 """Status, pull and reset for the app's own source folder, like the SKY kiosk's OTA pane. Runs off the GUI thread."""
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
@@ -106,7 +107,7 @@ class UpdatesPage(QWidget):
         if not self._usable():
             self.folder_label.setText("<b>Source folder:</b> not found. Choose your sky-programmer checkout.")
             return
-        self.folder_label.setText(f"<b>Source folder:</b> {self.repo}")
+        self.folder_label.setText(f"<b>Source folder:</b> {escape(str(self.repo))}")
 
     def _usable(self) -> bool:
         return self.repo is not None and gitops.is_app_repo(self.repo)
@@ -126,7 +127,7 @@ class UpdatesPage(QWidget):
             job.wait(5000)
             job.deleteLater()
             self._job = None
-            self._sync()
+            self.win.sync_ui()
             if error is not None:
                 self.output.setPlainText(f"Could not run git: {error}")
                 return
@@ -134,7 +135,7 @@ class UpdatesPage(QWidget):
 
         job.done.connect(finished)
         job.start()
-        self._sync()
+        self.win.sync_ui()
         return True
 
     def refresh(self) -> None:
@@ -168,8 +169,8 @@ class UpdatesPage(QWidget):
             return
         if not self._may_change_code():  # a board may have been connected while the dialog was open
             return
-        repo, commit, target = self.repo, preview["commit"], preview["target"]
-        self._start(lambda: gitops.reset_hard(repo, commit, target), self._finished)
+        repo = self.repo
+        self._start(lambda: gitops.reset_hard(repo, preview), self._finished)
 
     def _finished(self, result: dict) -> None:
         self.output.setPlainText(result["output"] or "Done.")
@@ -199,6 +200,8 @@ class UpdatesPage(QWidget):
         else:
             self.hint.setText("Pull only moves forward: if this folder and GitHub have both changed, nothing is "
                               "merged. Reset makes this folder match GitHub and discards changes here.")  # fmt: skip
+        if self.win.demo is not None:
+            self.hint.setText("These act on the real folder above, even with a simulated board. " + self.hint.text())
 
     def set_state(self, connected: bool, busy: bool, config_ok: bool) -> None:
         self._connected = connected or self.win.board is not None

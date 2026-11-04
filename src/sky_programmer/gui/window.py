@@ -69,7 +69,9 @@ class MainWindow(QMainWindow):
         self.board, self.info, self.layout = None, None, None
         self.script_paused = False
         self.code_stale = False
-        self._paused_uuids: set = set()  # this app's pauses, remembered across a reconnect
+        # This app's pauses, remembered across a reconnect or restart. The board can't be asked.
+        saved = "" if demo is not None else str(self.settings.value("paused_boards", ""))
+        self._paused_uuids: set = {uuid for uuid in saved.split(",") if uuid}
         self._connecting, self._closing = False, False
 
         central = QWidget()
@@ -85,6 +87,7 @@ class MainWindow(QMainWindow):
         self.nav.setFixedWidth(186)
         self.nav.setIconSize(QSize(20, 20))
         self.stack = QStackedWidget()
+        self.stack.setObjectName("Pages")
         self.dashboard, self.config_page = Dashboard(self), ConfigPage(self)
         self.backups_page, self.console = BackupsPage(self), ConsolePage(self)
         saved_repo = self.settings.value("repo")
@@ -188,9 +191,10 @@ class MainWindow(QMainWindow):
                                         "throttle or kill control until it's started or the board is power-cycled.")
         resume = QPushButton("Start script…")
         resume.clicked.connect(lambda: self.dashboard.start())
-        forget = QPushButton("I power-cycled it")
+        forget = QPushButton("I power-cycled it…")
         forget.setToolTip("Power-cycling restarts the script, and the board can't tell this app that it happened")
         forget.clicked.connect(self.forget_pause)
+        self.paused_banner_buttons = (forget, resume)
         self.paused_banner.row.addWidget(forget)
         self.paused_banner.row.addWidget(resume)
         self.baseline_banner = Banner("info")
@@ -292,6 +296,9 @@ class MainWindow(QMainWindow):
         if self.code_stale:
             self.prompts.info("Restart first", "The code in this app's folder changed. Restart before connecting.")
             return
+        if self.updates_page.busy:
+            self.prompts.info("Please wait", "An update is running. Connect when it has finished.")
+            return
         if not port:
             self.prompts.error("No port chosen", "Plug in the board, or choose or type its port.")
             return
@@ -368,9 +375,11 @@ class MainWindow(QMainWindow):
         if self.info:
             uuid = self.info["ident"]["uuid"]
             (self._paused_uuids.add if paused else self._paused_uuids.discard)(uuid)
+            if self.demo is None:
+                self.settings.setValue("paused_boards", ",".join(sorted(self._paused_uuids)))
 
     def forget_pause(self) -> None:
-        if self.board is not None:
+        if self.board is not None and self.prompts.confirm_power_cycled():
             self.board.submit(lambda prog: prog.forget_pause(), exclusive=True)
 
     # ---------------------------------------------------------------- updates
@@ -495,6 +504,9 @@ class MainWindow(QMainWindow):
             if page is self.updates_page:
                 self.updates_page.refresh()
 
+    def sync_ui(self) -> None:
+        self._sync()
+
     def _sync(self) -> None:
         connected = self.info is not None and self.board is not None
         busy = self.board.busy if self.board else False
@@ -510,6 +522,8 @@ class MainWindow(QMainWindow):
         self.connect_button.setText("Disconnect" if self.board is not None else "Connect")
         self.connect_button.setEnabled(not self._connecting and not busy and not self.updates_page.busy)
         self.baseline_button.setEnabled(config_ok and not busy)
+        for button in self.paused_banner_buttons:
+            button.setEnabled(connected and not busy)
         self.progress.setVisible(busy)
 
     def closeEvent(self, event) -> None:

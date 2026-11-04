@@ -11,7 +11,9 @@ These firmware behaviours are modelled on purpose, because each one once let a t
 - only real terminal commands answer, and only allowed meta commands print;
 - a bad BLDC switching frequency hangs the next boot, so USB never comes back;
 - a pause that times out stays pending, so the script stops later even though the answer was "no";
-- a REPL expression that can't pause first prints "Could not pause" and doesn't resume the script.
+- a REPL expression that can't pause first prints "Could not pause" and doesn't resume the script;
+- a REPL line within 0.5 s of the last is dropped with no reply;
+- only a meta command at the very start of the line counts as one: anything else is an expression.
 """
 from __future__ import annotations
 
@@ -94,6 +96,7 @@ class FakeVesc:
         self.pause_fails = knobs.pop("pause_fails", False)
         self.lose_running_reply = knobs.pop("lose_running_reply", False)  # SET_RUNNING acts, but the reply is lost
         self.repl_cannot_pause = knobs.pop("repl_cannot_pause", False)
+        self.repl_ignored = False
         self.linked_limit = knobs.pop("linked_limit", False)  # firmware's foc_sl_erpm_start <= 0.9 * foc_sl_erpm
         self.boot_hung = False
         self.pause_pending = False
@@ -171,6 +174,8 @@ class FakeVesc:
                     self._print(p.COMM_PRINT, text)
         elif cmd == p.COMM_LISP_REPL_CMD:
             text = pl[1:].rstrip(b"\0").decode()
+            if self.repl_ignored:  # within 0.5 s of the last line, the firmware drops it with no reply
+                return
             if self.repl_cannot_pause and not text.startswith(":"):
                 self._print(p.COMM_LISP_PRINT, "Could not pause")
                 return

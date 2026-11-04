@@ -38,6 +38,7 @@ class FakePrompts:
         self.starts, self.repl_asks, self.pauses = 0, 0, 0
         self.pause_answer, self.baseline_answer, self.reset_answer = True, True, True
         self.baseline_requests, self.resets = [], []
+        self.power_cycled_answer = True
 
     def confirm_write(self, rows, warnings, target=""):
         self.write_requests.append((rows, warnings))
@@ -55,6 +56,9 @@ class FakePrompts:
     def confirm_reset(self, preview):
         self.resets.append(preview)
         return self.reset_answer
+
+    def confirm_power_cycled(self):
+        return self.power_cycled_answer
 
     def ask_folder(self, start):
         return getattr(self, "folder", "")
@@ -762,6 +766,23 @@ def test_backing_up_over_drift_shows_what_it_would_accept_and_can_be_refused(gui
     assert prompts.errors[-1][0] == "Refused"
 
 
+def test_a_change_during_the_backup_question_is_not_saved(gui):
+    win, fake, prompts = gui()
+    _script_changes(win, fake, l_current_max=20.0)
+    before = win.backups_page.table.rowCount()
+
+    def changes_again(rows):
+        _script_changes(win, fake, l_max_erpm=33333.0)
+        return True
+
+    prompts.confirm_new_baseline = changes_again
+    win.backups_page.backup_now()
+    settle(win)
+    wait_until(lambda: prompts.errors)
+    assert prompts.errors[-1][0] == "Refused"
+    assert win.backups_page.table.rowCount() == before
+
+
 def test_backing_up_with_no_drift_does_not_ask(gui):
     win, _, prompts = gui()
     win.backups_page.backup_now()
@@ -916,6 +937,62 @@ def test_operator_can_say_the_board_was_power_cycled(gui):
     wait_until(lambda: win.info is not None)
     settle(win)
     assert win.paused_banner.isHidden()
+
+
+def test_saying_it_was_power_cycled_needs_a_yes(gui):
+    win, _, prompts = gui()
+    win.dashboard.pause()
+    settle(win)
+    wait_until(lambda: win.script_paused)
+    prompts.power_cycled_answer = False
+    win.forget_pause()
+    settle(win)
+    assert win.script_paused
+
+
+def test_the_banner_buttons_are_disabled_while_busy(gui):
+    win, _, _ = gui()
+    gate = threading.Event()
+    win.board.submit(lambda prog: gate.wait(10), exclusive=True)
+    QApplication.processEvents()
+    assert not any(b.isEnabled() for b in win.paused_banner_buttons)
+    gate.set()
+    settle(win)
+    assert all(b.isEnabled() for b in win.paused_banner_buttons)
+
+
+def test_a_restart_remembers_this_apps_pause(gui, tmp_path):
+    win, fake, _ = gui()
+    win.dashboard.pause()
+    settle(win)
+    wait_until(lambda: win.script_paused)
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    win.settings.sync()
+    prompts = FakePrompts()
+    again = MainWindow(link_factory=win.link_factory, ports=lambda: ["/dev/ttyFAKE"], backup_dir=win.backup_dir,
+                       prompts=prompts, settings_path=tmp_path / "settings.ini", repo_dir=tmp_path / "no-repo")
+    again.show()
+    again.connect_board()
+    wait_until(lambda: again.script_paused)
+    assert not again.paused_banner.isHidden()
+    wait_until(lambda: not again.board.busy)
+    again.close()
+
+
+def test_repl_resume_is_refused_while_the_motor_turns(gui):
+    win, fake, _ = gui()
+    win.dashboard.pause()
+    settle(win)
+    wait_until(lambda: win.script_paused)
+    fake.erpm = 5000
+    fake.commands.clear()
+    win.console.repl_input.setText("(+ 1 2)")
+    win.console.send_repl()
+    settle(win)
+    wait_until(lambda: "turning" in win.console.output.toPlainText())
+    assert p.COMM_LISP_REPL_CMD not in fake.commands
+    assert fake.script_running is False
 
 
 def test_a_lost_pause_reply_still_shows_the_banner(gui):
@@ -1187,6 +1264,45 @@ def test_when_the_app_runs_from_the_folder_a_pull_forces_a_restart_before_connec
     assert win.board is None
     assert prompts.infos[-1][0] == "Restart first"
     assert fake.commands == []
+
+
+def test_connecting_is_refused_while_an_update_runs(gui, source_folder):
+    win, _, prompts = gui(connect=False)
+    page = _updates(win, source_folder)
+    gate = threading.Event()
+    page._start(lambda: gate.wait(10), lambda _: None)
+    QApplication.processEvents()
+    assert not win.connect_button.isEnabled()
+    win.connect_board()
+    assert win.board is None
+    assert prompts.infos[-1][0] == "Please wait"
+    gate.set()
+    wait_until(lambda: not page.busy)
+    assert win.connect_button.isEnabled()
+
+
+def test_the_connect_button_recovers_if_the_board_goes_during_a_status_job(gui, source_folder):
+    win, fake, _ = gui()
+    page = _updates(win, source_folder)
+    gate = threading.Event()
+    page._start(lambda: gate.wait(10), lambda _: None)
+    fake.unplugged = True
+    wait_until(lambda: win.board is None)
+    gate.set()
+    wait_until(lambda: not page.busy)
+    assert win.connect_button.isEnabled()
+    assert win.connect_button.text() == "Connect"
+
+
+def test_the_simulated_board_says_updates_act_on_the_real_folder(tmp_path, source_folder):
+    QApplication.instance() or QApplication([])
+    win = MainWindow(backup_dir=tmp_path, demo=DemoBoard(), prompts=FakePrompts(),
+                     settings_path=tmp_path / "settings.ini", repo_dir=source_folder)
+    win.show()
+    wait_until(lambda: win.info is not None)
+    assert "real folder" in win.updates_page.hint.text()
+    wait_until(lambda: not win.board.busy)
+    win.close()
 
 
 def test_pull_and_reset_are_refused_while_a_board_is_connected(gui, source_folder):

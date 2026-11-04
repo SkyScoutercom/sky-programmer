@@ -60,7 +60,7 @@ Only after A to C pass. Start it with `sky-gui`, and use the same setup: engine 
 | 21 | Turn the motor by hand | Speed changes on the tile and chart |
 | 22 | Open Configuration | `l_current_max` and `l_abs_current_max` match VESC Tool |
 | 23 | Change `l_temp_fet_start` to 84, then Review & write, then type YES | Paused banner appears. Reads back 84 |
-| 24 | Power-cycle, reconnect | Still 84. The banner still says "may be paused", because the app can't see a power-cycle. Click "I power-cycled it" |
+| 24 | Power-cycle, reconnect | Still 84. The banner still says "may be paused", because the app can't see a power-cycle. Click "I power-cycled it…" |
 | 25 | Backups: restore the backup from before step 23 | One field changes back |
 | 26 | Unplug USB while connected | Clear message, back to the welcome screen, no hang |
 | 27 | With VESC Tool connected, try to connect | Clear "cannot open" message |

@@ -79,13 +79,13 @@ def list_backups(directory, uuid: str) -> list[Path]:
     return sorted(folder.glob("*.json")) if folder.is_dir() else []
 
 
-def latest(directory, uuid: str, fw: str, reasons=BASELINE_REASONS):
-    """Newest readable baseline of this board on this firmware, or None."""
+def latest(directory, uuid: str, fw: str, reasons=BASELINE_REASONS, usable=lambda doc: True):
+    """Newest readable baseline of this board on this firmware that passes `usable`, or None."""
     for path in reversed(list_backups(directory, uuid)):
         try:
             doc = load(path)
         except (OSError, ValueError, SafetyRefusal):
             continue
-        if doc["fw"] == fw and doc["reason"] in reasons:
+        if doc["fw"] == fw and doc["reason"] in reasons and usable(doc):
             return doc
     return None

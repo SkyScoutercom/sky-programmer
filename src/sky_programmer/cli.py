@@ -151,9 +151,11 @@ def cmd_set(prog, args) -> int:
 
 def cmd_backup(prog, args) -> int:
     drift = prog.baseline_drift()
-    if drift:
-        print(f"Note: this makes {len(drift)} field(s) that differ from the last backup the new settings: "
-              f"{', '.join(sorted(drift))}. A script's temporary changes would be stored by the next write.")
+    if drift and not args.accept_drift:
+        raise SafetyRefusal(
+            f"{', '.join(sorted(drift))} differ from this board's last backup, and a new backup would make them its "
+            "settings, so the next write would store a script's temporary changes. Power-cycle to clear those, or "
+            "pass --accept-drift if you changed them on purpose.")
     print(f"Backup saved: {prog.save_backup()}")
     return 0
 
@@ -266,7 +268,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("changes", nargs="+", metavar="field=value")
     sp.add_argument("--accept-drift", action="store_true", help="also store differences from the last backup")
     add_write_flags(sp)
-    add("backup", cmd_backup, "save the motor and app config to a file")
+    sp = add("backup", cmd_backup, "save the motor and app config to a file")
+    sp.add_argument("--accept-drift", action="store_true", help="also accept differences from the last backup")
     add("backups", cmd_backups, "list this board's backups")
     sp = add("diff", cmd_diff, "compare the board's motor config with a backup")
     sp.add_argument("file")

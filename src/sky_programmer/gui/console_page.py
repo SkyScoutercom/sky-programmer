@@ -91,7 +91,14 @@ class ConsolePage(QWidget):
         if self.win.script_paused and not text.strip().startswith(":") and not self.win.prompts.confirm_repl_resume():
             self.append("Not sent: the script stays paused.")
             return
-        if board.submit(lambda prog: prog.repl(text), self._show_reply, self._show_error, exclusive=True):
+        resuming = self.win.script_paused and not text.strip().startswith(":")
+
+        def job(prog):
+            if resuming:  # the same check as Start script, since this can restart it
+                prog.check_can_start()
+            return prog.repl(text)
+
+        if board.submit(job, self._show_reply, self._show_error, exclusive=True):
             self.append(f"sky> {text}")
             self.repl_input.clear()
         else:

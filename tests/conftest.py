@@ -6,6 +6,13 @@ from sky_programmer.programmer import Programmer
 from sky_programmer.simulator import FakeVesc
 
 
+@pytest.fixture(autouse=True)
+def _no_inherited_git_location(monkeypatch):
+    """A test run started from a git hook mustn't point these tests' git commands at the real repo."""
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_PREFIX"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def board(tmp_path):
     """Returns make(**knobs) -> (fake board, Programmer). Every test fails if a forbidden command is sent."""

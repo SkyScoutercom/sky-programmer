@@ -47,7 +47,7 @@ It can't promise everything:
 | Bad value, e.g. flux = -2 or odd pole count | Firmware only limits some fields | Rules refuse new invalid values |
 | Writing while the motor turns | The firmware releases the motor during the write | Refused unless idle on two samples, checked before the script is paused and again before writing |
 | Script changing things during a write | `conf-set` changes live config | Script paused before writing; a failed pause stops the write; config read twice and compared |
-| Storing a script's temporary changes | A write stores the whole live config | Refused with no baseline backup, or with differences from the last one, unless `--accept-drift` |
+| Storing a script's temporary changes | A write stores the whole live config | Refused with no baseline backup, or with differences from the last one, unless `--accept-drift`. `sky backup` refuses the same differences, since a new backup would accept them. Pre-write backups don't count as a baseline |
 | Weak supply during a flash write | Brown-out can interrupt it | Bus voltage must be inside the configured range (USB-only power is allowed) |
 | Repeating a write that may have worked | Wears flash and hides the real state | Never retried; the read-back decides |
 | Pausing or restarting the script with the engine running | The script owns throttle and kill | `sky stop` and `sky start` refuse if the motor is turning |
@@ -70,9 +70,9 @@ no way around `check_packet()`. It adds these rules of its own, each covered by 
 | Pausing with an engine the board can't see | Pausing needs a typed YES, stating the engine is stopped |
 | The motor starting, or the config changing, during a dialog | `commit()` and the pause and start jobs check again after the dialog |
 | The board disappearing during a dialog | Nothing is queued on a board that's gone, and the app says nothing was written |
-| Forgetting that a script is paused | A banner stays up, including after a reconnect, and disconnecting or closing warns about it |
+| Forgetting that a script is paused | While connected, a banner stays up, including after a reconnect or restart, and disconnecting or closing warns about it |
 | A lost reply hiding a pause | A pause counts as "may be paused" until a reply proves otherwise, and a timed-out pause stays pending in the firmware (`pause_eval`) |
-| A REPL expression resuming a paused script | The app asks first |
+| A REPL expression resuming a paused script | It needs a typed YES and an idle motor, as Start script does. Only a `> result` line clears the banner, and a failed expression turns it on, since its pause stays pending |
 | Old numbers looking live | Tiles go blank and charts say "no data" when no value has arrived for 1.5 s |
 | A new backup quietly accepting a script's temporary changes | Back up now shows the differences and needs a typed YES. A pre-write backup never counts as the baseline, so a failed restore can't accept them either |
 | Choosing the wrong board | A chosen or typed port is never replaced, several boards are never guessed between, and the write dialog names the board's UUID |
@@ -82,9 +82,13 @@ no way around `check_packet()`. It adds these rules of its own, each covered by 
 | An override clicked past | The app has no `--allow-*` or `--force` override. They stay in the terminal, where each one is a typed flag |
 | Mistaking the simulator for a real board | A permanent banner, and its backups go to a temporary folder |
 
-The paused banner only knows what this app did in this run. The board can't be asked, because `COMM_LISP_GET_STATS`
-resumes a paused script. So a pause made by VESC Tool or before the app last started doesn't show, and the banner can't
-see a power-cycle: it says "may be paused" until you start the script or click "I power-cycled it".
+The paused banner only knows what this app did. The board can't be asked, because `COMM_LISP_GET_STATS` resumes a paused
+script. So a pause made by VESC Tool or `sky` doesn't show, and the banner can't see a power-cycle: it says "may be
+paused" until you start the script or say you power-cycled it.
+
+If USB stalls in the middle of a write, the firmware's parser (`packet_process_byte`) has no timeout, so it keeps
+collecting bytes for the cut-off frame and the board can look dead. The app reports the state as unknown and doesn't
+retry. A power-cycle clears it. Reaching a wrong command that way would need a CRC match inside the cut-off data.
 
 Live values are sampled about 4 times a second, so a short fault can come and go unseen. A fault that is seen is kept in
 the Console log, and the terminal command `faults` lists the firmware's own record.
@@ -94,11 +98,14 @@ the Console log, and the terminal command `faults` lists the firmware's own reco
 Git operations never touch the board, but they replace the code that does, so:
 
 - Pull and reset need the board disconnected, including at the moment a reset is confirmed.
-- If the app runs from that folder, a change blocks connecting until the app restarts, so the running checks are the
-  ones in the folder.
-- Only a checkout of this project is accepted, because a reset in the wrong folder would destroy someone's work.
-- Pull is `--ff-only`. Reset shows every uncommitted change and local commit it would discard, needs a typed `RESET`,
-  refuses if the target moved since you reviewed it, keeps untracked files, and prints how to go back.
+- Connecting is blocked while a pull or reset runs.
+- If the app runs from that folder, a change made on this page blocks connecting until the app restarts, so the running
+  checks are the ones in the folder. A pull made in a terminal isn't noticed, so restart the app yourself after one.
+- Only a checkout of this project is accepted, as git itself sees it, because a reset in the wrong folder would destroy
+  someone's work.
+- Pull is `--ff-only`. Reset names the folder and shows every uncommitted change, local commit and untracked file it
+  would replace, and needs a typed `RESET`. It refuses if the target or the folder changed since you reviewed it, keeps
+  other untracked files, and prints how to get commits back. Uncommitted changes can't be brought back.
 - Each pull and reset adds a line to `~/.local/share/sky-programmer/git_ops.log`.
 
 ## Every config write follows these steps

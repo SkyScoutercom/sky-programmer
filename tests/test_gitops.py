@@ -71,7 +71,7 @@ def test_a_project_folder_without_git_is_refused(tmp_path):
 @pytest.mark.parametrize("call", [
     lambda p: gitops.pull(p),
     lambda p: gitops.reset_preview(p),
-    lambda p: gitops.reset_hard(p, "abc", "HEAD"),
+    lambda p: gitops.reset_hard(p, {"commit": "abc", "target": "HEAD", "state": ""}),
 ])
 def test_operations_refuse_a_folder_that_is_not_this_project(tmp_path, call):
     other = tmp_path / "other"
@@ -90,7 +90,7 @@ def test_reset_refuses_an_unrelated_repo_even_with_a_valid_commit(tmp_path):
     _run(other, "config", "user.name", "t")
     _commit(other, "a.txt", "one\n")
     (other / "a.txt").write_text("uncommitted work\n")
-    result = gitops.reset_hard(other, _run(other, "rev-parse", "HEAD"), "HEAD")
+    result = gitops.reset_hard(other, {"commit": _run(other, "rev-parse", "HEAD"), "target": "HEAD", "state": ""})
     assert result["ok"] is False
     assert (other / "a.txt").read_text() == "uncommitted work\n"
 
@@ -98,6 +98,7 @@ def test_reset_refuses_an_unrelated_repo_even_with_a_valid_commit(tmp_path):
 def test_running_from_is_true_only_for_the_folder_holding_this_code(tmp_path):
     assert gitops.running_from(Path(gitops.__file__).parents[2]) is True
     assert gitops.running_from(tmp_path) is False
+    assert gitops.running_from(Path(gitops.__file__).parents[3]) is False  # a folder that merely contains it
 
 
 # ---------------------------------------------------------------------- status
@@ -253,7 +254,7 @@ def test_reset_makes_the_folder_match_upstream_and_keeps_untracked_files(repos):
     (work / "scratch.txt").write_text("untracked\n")
     old_head = _run(work, "rev-parse", "--short=12", "HEAD")
     preview = gitops.reset_preview(work)
-    result = gitops.reset_hard(work, preview["commit"], preview["target"])
+    result = gitops.reset_hard(work, preview)
     assert result["ok"] is True
     assert result["changed"] is True
     assert _run(work, "rev-parse", "HEAD") == _run(other, "rev-parse", "HEAD")
@@ -267,7 +268,7 @@ def test_reset_can_be_undone_with_the_command_it_prints(repos):
     work, _ = repos
     _commit(work, name="mine.txt")
     preview = gitops.reset_preview(work)
-    result = gitops.reset_hard(work, preview["commit"], preview["target"])
+    result = gitops.reset_hard(work, preview)
     undo = result["output"].rsplit("git ", 1)[1].split()
     _run(work, *undo)
     assert (work / "mine.txt").exists()
@@ -279,7 +280,7 @@ def test_reset_with_no_upstream_goes_to_head_and_says_so(repos):
     (work / "f.txt").write_text("my edit\n")
     preview = gitops.reset_preview(work)
     assert preview["target"] == "HEAD"
-    result = gitops.reset_hard(work, preview["commit"], preview["target"])
+    result = gitops.reset_hard(work, preview)
     assert result["ok"] is True
     assert "reset --hard HEAD" in result["output"]
     assert (work / "f.txt").read_text() == "one\n"
@@ -291,7 +292,7 @@ def test_reset_refuses_if_the_target_moved_since_the_review(repos):
     preview = gitops.reset_preview(work)
     _publish(other, name="later.txt")
     _run(work, "fetch", "-q")
-    result = gitops.reset_hard(work, preview["commit"], preview["target"])
+    result = gitops.reset_hard(work, preview)
     assert result["ok"] is False
     assert "changed since you reviewed" in result["output"]
     assert (work / "f.txt").read_text() == "my edit\n"
@@ -300,8 +301,126 @@ def test_reset_refuses_if_the_target_moved_since_the_review(repos):
 def test_reset_is_logged(repos, tmp_path):
     work, _ = repos
     preview = gitops.reset_preview(work)
-    gitops.reset_hard(work, preview["commit"], preview["target"])
+    gitops.reset_hard(work, preview)
     assert " reset dir=" in (tmp_path / "data" / "sky-programmer" / "git_ops.log").read_text()
+
+
+def test_reset_lists_untracked_and_ignored_files_it_would_replace(repos):
+    work, other = repos
+    (other / "theirs.txt").write_text("upstream\n")
+    (other / "ignored.txt").write_text("upstream\n")
+    _run(other, "add", ".")
+    _run(other, "commit", "-qm", "adds two files")
+    _run(other, "push", "-q")
+    (work / ".git" / "info" / "exclude").write_text("ignored.txt\n")
+    (work / "ignored.txt").write_text("my ignored work\n")
+    (work / "theirs.txt").write_text("my untracked work\n")
+    (work / "elsewhere.txt").write_text("kept\n")
+    preview = gitops.reset_preview(work)
+    assert set(preview["overwritten"]) == {"ignored.txt", "theirs.txt"}
+    assert preview["untracked"] == 1
+    assert preview["lost_files"] == []
+    gitops.reset_hard(work, preview)
+    assert (work / "theirs.txt").read_text() == "upstream\n"  # what the dialog said would be replaced
+    assert (work / "elsewhere.txt").exists()
+
+
+def test_reset_lists_an_untracked_folder_where_the_target_has_a_file(repos):
+    work, other = repos
+    _publish(other, name="thing", text="a file upstream\n")
+    (work / "thing").mkdir()
+    (work / "thing" / "mine.txt").write_text("my work\n")
+    preview = gitops.reset_preview(work)
+    assert "thing/mine.txt" in preview["overwritten"]
+
+
+def test_reset_refuses_if_the_folder_changed_since_the_review(repos):
+    work, _ = repos
+    (work / "f.txt").write_text("first edit\n")
+    preview = gitops.reset_preview(work)
+    (work / "f.txt").write_text("a later edit that was never shown\n")
+    result = gitops.reset_hard(work, preview)
+    assert result["ok"] is False
+    assert "changed since you reviewed" in result["output"]
+    assert (work / "f.txt").read_text() == "a later edit that was never shown\n"
+
+
+def test_reset_refuses_if_a_commit_was_made_since_the_review(repos):
+    work, _ = repos
+    preview = gitops.reset_preview(work)
+    _commit(work, name="later.txt")
+    assert gitops.reset_hard(work, preview)["ok"] is False
+    assert (work / "later.txt").exists()
+
+
+def test_inherited_git_location_cannot_send_a_reset_to_another_repo(repos, tmp_path, monkeypatch):
+    work, other = repos
+    (other / "f.txt").write_text("someone else's work\n")
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+    preview = gitops.reset_preview(work)
+    assert preview["lost_files"] == []
+    gitops.reset_hard(work, preview)
+    assert (other / "f.txt").read_text() == "someone else's work\n"
+
+
+def test_an_empty_git_folder_does_not_send_a_reset_to_the_outer_repo(repos):
+    work, _ = repos
+    (work / "f.txt").write_text("outer repo's work\n")
+    inner = work / "copy"
+    _project(inner)
+    (inner / ".git").mkdir()
+    assert gitops.is_app_repo(inner) is True
+    result = gitops.reset_preview(inner)
+    assert result["ok"] is False
+    assert (work / "f.txt").read_text() == "outer repo's work\n"
+
+
+def test_a_failed_git_status_is_not_reported_as_clean(repos):
+    work, _ = repos
+    (work / "f.txt").write_text("dirty\n")
+    (work / ".git" / "index").write_bytes(b"not an index")
+    assert "uncommitted: none" not in gitops.report(work)
+    preview = gitops.reset_preview(work)
+    assert preview["ok"] is False
+    assert "nothing was done" in preview["output"]
+
+
+def test_a_pull_that_times_out_after_moving_head_still_says_the_code_changed(repos, monkeypatch):
+    work, other = repos
+    _publish(other, name="fresh.txt")
+    real = gitops._git
+
+    def pull_then_time_out(repo, *args, **kw):
+        result = real(repo, *args, **kw)
+        if args[0] == "pull":
+            raise subprocess.TimeoutExpired("git", 1)
+        return result
+
+    monkeypatch.setattr(gitops, "_git", pull_then_time_out)
+    result = gitops.pull(work)
+    assert result["ok"] is False
+    assert result["changed"] is True
+
+
+def test_askpass_configured_in_git_is_not_run(repos, tmp_path):
+    work, _ = repos
+    marker = tmp_path / "ran"
+    script = tmp_path / "askpass.sh"
+    script.write_text(f"#!/bin/sh\ntouch {marker}\n")
+    script.chmod(0o755)
+    _run(work, "config", "core.askPass", str(script))
+    _run(work, "remote", "set-url", "origin", "https://127.0.0.1:9/x/y.git")
+    gitops.pull(work)
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("url, shown", [
+    ("https://user:pa@ss@github.com/x/y.git", "https://github.com/x/y.git"),
+    ("https://github.com/foo@v1/repo.git", "https://github.com/foo@v1/repo.git"),
+])
+def test_urls_hide_credentials_and_nothing_else(url, shown):
+    assert gitops._hide_credentials(f"fatal: {url} failed") == f"fatal: {shown} failed"
 
 
 def test_git_being_missing_is_an_answer_not_a_crash(repos, monkeypatch):

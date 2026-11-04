@@ -107,7 +107,13 @@ class BackupsPage(QWidget):
                 if not self.win.prompts.confirm_new_baseline(rows):
                     self.win.log("Cancelled. No backup was saved.")
                     return
-            if not board.submit(lambda prog: prog.save_backup(), done, self.win.report, exclusive=True):
+            def save(prog):
+                if prog.baseline_drift() != drift:  # only what the operator saw may become the baseline
+                    raise SafetyRefusal("the board changed while you were reviewing, so nothing was saved. "
+                                        "Click Back up now again.")  # fmt: skip
+                return prog.save_backup()
+
+            if not board.submit(save, done, self.win.report, exclusive=True):
                 self.win.prompts.error("Not saved", "The board disconnected, so no backup was saved.")
 
         board.submit(lambda prog: prog.baseline_drift(), checked, self.win.report, exclusive=True)

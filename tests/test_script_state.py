@@ -78,6 +78,45 @@ def test_repl_that_could_not_pause_keeps_the_record(board):
     assert prog.script_paused is True
 
 
+@pytest.mark.parametrize("reply", ["Could not pause", "Not enough memory"])
+def test_repl_that_failed_counts_as_maybe_paused_even_if_it_was_not_before(board, monkeypatch, reply):
+    _, prog = board()
+    monkeypatch.setattr(prog.link, "collect_prints", lambda wait: [reply])
+    prog.repl("(+ 1 2)")
+    assert prog.script_paused is True
+
+
+def test_only_a_result_line_proves_the_script_resumed(board, monkeypatch):
+    _, prog = board()
+    prog.stop()
+    monkeypatch.setattr(prog.link, "collect_prints", lambda wait: ["some C library message"])
+    prog.repl("(+ 1 2)")
+    assert prog.script_paused is True
+
+
+def test_an_old_message_is_not_taken_for_the_answer(board):
+    fake, prog = board()
+    prog.stop()
+    fake._print(135, "> left over from earlier")
+    fake.repl_ignored = True
+    assert prog.repl("(+ 1 2)") == ["> left over from earlier"]
+    assert prog.script_paused is True
+
+
+def test_a_leading_space_cannot_turn_a_meta_command_into_an_expression(board):
+    fake, prog = board()
+    prog.stop()
+    prog.repl(" :help")
+    assert fake.script_running is False
+    assert prog.script_paused is True
+
+
+def test_a_leading_space_cannot_get_past_the_meta_filter(board):
+    _, prog = board()
+    with pytest.raises(SafetyRefusal):
+        prog.repl("  :pause")
+
+
 def test_repl_with_no_reply_keeps_the_record(board, monkeypatch):
     fake, prog = board()
     prog.stop()
@@ -178,6 +217,61 @@ def test_a_failed_restore_does_not_launder_drift_into_the_baseline(board):
     fake.write_mode = "ok"
     with pytest.raises(SafetyRefusal, match="differs"):
         prog.plan_set({"l_temp_fet_start": "84"})
+
+
+def test_terminal_backup_over_drift_is_refused_unless_accepted(board, capsys):
+    from argparse import Namespace
+
+    from sky_programmer.cli import cmd_backup
+
+    fake, prog = board()
+    fake.mc = config.patch_blob(fake.mc, prog.layout(), config.MC_ROOT, {"l_current_max": 20.0})
+    before = len(backup.list_backups(prog.backup_dir, prog.identify()["uuid"]))
+    with pytest.raises(SafetyRefusal, match="l_current_max"):
+        cmd_backup(prog, Namespace(accept_drift=False))
+    assert len(backup.list_backups(prog.backup_dir, prog.identify()["uuid"])) == before
+    assert cmd_backup(prog, Namespace(accept_drift=True)) == 0
+
+
+def test_an_undecodable_baseline_does_not_lock_the_board_out(board, tmp_path):
+    import base64
+    import hashlib
+    import json
+
+    fake, prog = board()
+    ident = prog.identify()
+    newest = backup.list_backups(prog.backup_dir, ident["uuid"])[-1]
+    doc = json.loads(newest.read_text())
+    blob = b"wrong size"
+    doc["mcconf"] = {"b64": base64.b64encode(blob).decode(), "sha256": hashlib.sha256(blob).hexdigest()}
+    (newest.parent / "99999999-000000-000000000-manual.json").write_text(json.dumps(doc))
+    assert prog.baseline()["mc_blob"] != blob
+    prog.commit(prog.plan_set({"l_temp_fet_start": "84"}))
+    assert fake.value("l_temp_fet_start") == 84
+
+
+def test_refused_supply_at_write_time_leaves_the_script_running(board):
+    fake, prog = board()
+    plan = prog.plan_set({"l_max_vin": "60"})
+    fake.v_in = 65.0
+    with pytest.raises(SafetyRefusal):
+        prog.commit(plan)
+    assert fake.script_running is True
+
+
+def test_a_board_dying_after_the_pause_says_nothing_was_written_and_the_script_may_be_paused(board):
+    fake, prog = board()
+    plan = prog.plan_set({"l_temp_fet_start": "84"})
+    real = fake._set_running
+
+    def die_after_pause(run):
+        real(run)
+        fake.dead = True
+
+    fake._set_running = die_after_pause
+    with pytest.raises(CommsError, match="Nothing was written.*may now be paused"):
+        prog.commit(plan)
+    assert prog.script_paused is True
 
 
 def test_baseline_drift_reports_a_scripts_change(board):
