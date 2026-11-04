@@ -15,8 +15,8 @@ It can't promise everything:
   none, so the app's rating table is the main check, and `--allow-risky` goes past it.
 - **The list of boot-hanging values comes from reading the firmware, not from trying them.** One independent review
   found one route (BLDC or DC switching frequency) and no other, but that doesn't prove there is no other.
-- **The engine is invisible to the board** once a relay disconnects the alternator, so `sky` asks you to state it
-  is stopped. That statement is yours to get right.
+- **The engine is invisible to the board** once a relay disconnects the alternator, so a write or start asks you to
+  state it is stopped. That statement is yours to get right. `sky stop` doesn't ask, though the desktop app does.
 - **The REPL can't see inside your own script's functions.** It checks the words you type, so a function your script
   defines runs whatever it contains.
 - **A failed flash save goes unreported.** The firmware applies the new config in RAM and acknowledges even if the
@@ -64,21 +64,42 @@ no way around `check_packet()`. It adds these rules of its own, each covered by 
 |---|---|
 | A live-values poll racing a write and taking its reply | One thread owns the port and runs one job at a time. Polling only happens with no job waiting |
 | Polling resuming a paused script | Polling only sends `COMM_GET_VALUES` |
-| Two writes queued by a double click | Only one exclusive job can be pending, and the controls are disabled meanwhile |
+| Two writes queued by a double click | Only one exclusive job can be pending, and the controls and table are disabled meanwhile |
 | Closing the window or disconnecting during a write | Refused until the job has finished |
-| A confirmation clicked out of habit | YES has to be typed, and Cancel is the default button |
-| The motor starting, or the config changing, during a dialog | `commit()` and the start job check again after the dialog |
+| A confirmation clicked out of habit | YES has to be typed, and Enter does nothing until it is |
+| Pausing with an engine the board can't see | Pausing needs a typed YES, stating the engine is stopped |
+| The motor starting, or the config changing, during a dialog | `commit()` and the pause and start jobs check again after the dialog |
 | The board disappearing during a dialog | Nothing is queued on a board that's gone, and the app says nothing was written |
-| Forgetting that a script is paused | A banner stays up while this app knows it paused the script, and disconnecting or closing warns about it |
+| Forgetting that a script is paused | A banner stays up, including after a reconnect, and disconnecting or closing warns about it |
+| A lost reply hiding a pause | A pause counts as "may be paused" until a reply proves otherwise, and a timed-out pause stays pending in the firmware (`pause_eval`) |
 | A REPL expression resuming a paused script | The app asks first |
-| Old numbers looking live | Tiles go blank when no value has arrived for 1.5 s, and charts show a gap |
+| Old numbers looking live | Tiles go blank and charts say "no data" when no value has arrived for 1.5 s |
+| A new backup quietly accepting a script's temporary changes | Back up now shows the differences and needs a typed YES. A pre-write backup never counts as the baseline, so a failed restore can't accept them either |
+| Choosing the wrong board | A chosen or typed port is never replaced, several boards are never guessed between, and the write dialog names the board's UUID |
+| Another program taking the replies | The port is opened exclusively (`TIOCEXCL`), so VESC Tool can't open it afterwards |
+| A wedged USB link hanging the app | Serial writes time out after 2 s and become a communication error |
 | Scrolling over a dropdown changing a setting | Dropdowns in the table ignore the mouse wheel |
-| An override clicked past | The app has none. They stay in the terminal, where each one is a typed flag |
+| An override clicked past | The app has no `--allow-*` or `--force` override. They stay in the terminal, where each one is a typed flag |
 | Mistaking the simulator for a real board | A permanent banner, and its backups go to a temporary folder |
 
-The paused banner only knows what this app did. The board can't be asked, because `COMM_LISP_GET_STATS` resumes a
-paused script, so a pause made by VESC Tool or an earlier session doesn't show, and a power-cycle doesn't clear the banner
-until you reconnect.
+The paused banner only knows what this app did in this run. The board can't be asked, because `COMM_LISP_GET_STATS`
+resumes a paused script. So a pause made by VESC Tool or before the app last started doesn't show, and the banner can't
+see a power-cycle: it says "may be paused" until you start the script or click "I power-cycled it".
+
+Live values are sampled about 4 times a second, so a short fault can come and go unseen. A fault that is seen is kept in
+the Console log, and the terminal command `faults` lists the firmware's own record.
+
+### Updates
+
+Git operations never touch the board, but they replace the code that does, so:
+
+- Pull and reset need the board disconnected, including at the moment a reset is confirmed.
+- If the app runs from that folder, a change blocks connecting until the app restarts, so the running checks are the
+  ones in the folder.
+- Only a checkout of this project is accepted, because a reset in the wrong folder would destroy someone's work.
+- Pull is `--ff-only`. Reset shows every uncommitted change and local commit it would discard, needs a typed `RESET`,
+  refuses if the target moved since you reviewed it, keeps untracked files, and prints how to go back.
+- Each pull and reset adds a line to `~/.local/share/sky-programmer/git_ops.log`.
 
 ## Every config write follows these steps
 

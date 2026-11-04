@@ -60,11 +60,14 @@ Only after A to C pass. Start it with `sky-gui`, and use the same setup: engine 
 | 21 | Turn the motor by hand | Speed changes on the tile and chart |
 | 22 | Open Configuration | `l_current_max` and `l_abs_current_max` match VESC Tool |
 | 23 | Change `l_temp_fet_start` to 84, then Review & write, then type YES | Paused banner appears. Reads back 84 |
-| 24 | Power-cycle, reconnect | Still 84. **The banner is gone only after reconnecting** |
+| 24 | Power-cycle, reconnect | Still 84. The banner still says "may be paused", because the app can't see a power-cycle. Click "I power-cycled it" |
 | 25 | Backups: restore the backup from before step 23 | One field changes back |
 | 26 | Unplug USB while connected | Clear message, back to the welcome screen, no hang |
 | 27 | With VESC Tool connected, try to connect | Clear "cannot open" message |
 | 28 | Pause script while turning the motor by hand fast | Refused above about 200 erpm |
+| 29 | While connected here, try to connect VESC Tool | VESC Tool can't open the port |
+| 30 | Pause script, type YES, then watch something the script visibly does | It stops, and the banner appears |
+| 31 | With the script paused, disconnect and reconnect without power-cycling | The banner comes back, and a REPL line asks first |
 
 Please send back any step that didn't match, with its output. Steps 6, 7, 11, 13, 15 and 17 test assumptions the
 simulated board can't confirm.

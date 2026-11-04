@@ -8,7 +8,6 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ..programmer import MONITOR_COLUMNS
-from . import theme
 from .widgets import StripChart, Tile
 
 STALE_AFTER_S = 1.5
@@ -20,30 +19,30 @@ class Dashboard(QWidget):
         self.win = win
         self._csv_file, self._csv = None, None
         self._last_sample = None
+        self._last_fault = 0
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 14, 16, 14)
-        root.setSpacing(10)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(12)
 
         actions = QHBoxLayout()
-        self.pause_button = QPushButton("Pause script && release motor")
-        self.pause_button.clicked.connect(self.pause)
-        self.start_button = QPushButton("Start script…")
-        self.start_button.clicked.connect(self.start)
-        self.record_button = QPushButton("Record CSV…")
-        self.record_button.clicked.connect(self.toggle_recording)
         title = QLabel("Dashboard")
         title.setObjectName("PageTitle")
+        self.record_button = QPushButton("Record CSV…")
+        self.record_button.clicked.connect(self.toggle_recording)
+        self.start_button = QPushButton("Start script…")
+        self.start_button.clicked.connect(self.start)
+        self.pause_button = QPushButton("Pause script…")
+        self.pause_button.setObjectName("Danger")
+        self.pause_button.setToolTip("Pauses the script and releases the motor. This does not stop the engine.")
+        self.pause_button.clicked.connect(self.pause)
         actions.addWidget(title)
         actions.addStretch(1)
         for b in (self.record_button, self.start_button, self.pause_button):
             actions.addWidget(b)
         root.addLayout(actions)
-        note = QLabel("Pausing the script does not stop the engine. Kill the engine with the RC switch.")
-        note.setObjectName("Muted")
-        root.addWidget(note)
 
         grid = QGridLayout()
-        grid.setSpacing(8)
+        grid.setSpacing(10)
         self.tiles = {}
         for i, (key, label) in enumerate((("bus", "Bus voltage"), ("erpm", "Speed"), ("motor_a", "Motor current"),
                                           ("input_a", "Input current"), ("duty", "Duty"), ("fet", "MOSFET temp"),
@@ -53,7 +52,7 @@ class Dashboard(QWidget):
         root.addLayout(grid)
 
         charts = QGridLayout()
-        charts.setSpacing(8)
+        charts.setSpacing(10)
         self.charts = {
             "erpm": StripChart("Speed", "erpm", 200, 0),
             "current_motor": StripChart("Motor current", "A", 4),
@@ -63,6 +62,10 @@ class Dashboard(QWidget):
         for i, chart in enumerate(self.charts.values()):
             charts.addWidget(chart, i // 2, i % 2)
         root.addLayout(charts, 1)
+
+        note = QLabel("Stopping the engine is the RC switch's job: nothing on this page stops it.")
+        note.setObjectName("Muted")
+        root.addWidget(note)
 
         self._stale = QTimer(self)
         self._stale.timeout.connect(self._check_stale)
@@ -81,14 +84,15 @@ class Dashboard(QWidget):
         self.tiles["motor"].set(f"{v['temp_motor']:.1f} °C")
         name = s["fault"].replace("FAULT_CODE_", "")
         if v["fault_code"]:
-            self.tiles["fault"].set(f"⚠ {name}", theme.CRITICAL)
+            self.tiles["fault"].set(f"⚠ {name}", "critical")
         else:
-            self.tiles["fault"].set(f"✓ {name}", theme.GOOD)
+            self.tiles["fault"].set(f"✓ {name}", "good")
+        if v["fault_code"] and v["fault_code"] != self._last_fault:  # the tile clears, so keep a record
+            self.win.log(f"Fault seen: {name}")
+        self._last_fault = v["fault_code"]
         for key, chart in self.charts.items():
             chart.add(t, v[key])
-        if self._csv:
-            self._csv.writerow(s["row"])
-            self._csv_file.flush()
+        self._record(s["row"])
 
     def _check_stale(self) -> None:
         """Old numbers next to a motor are worse than none, e.g. during a write, when polling stops."""
@@ -96,10 +100,13 @@ class Dashboard(QWidget):
             self._last_sample = None
             for tile in self.tiles.values():
                 tile.set("—")
+            for chart in self.charts.values():
+                chart.mark_stale()
 
     def reset(self) -> None:
         self.stop_recording()
         self._last_sample = None
+        self._last_fault = 0
         for tile in self.tiles.values():
             tile.set("—")
         for chart in self.charts.values():
@@ -115,55 +122,71 @@ class Dashboard(QWidget):
             return
         try:
             self._csv_file = open(path, "w", newline="")
+            self._csv = csv.writer(self._csv_file)
+            self._csv.writerow(MONITOR_COLUMNS)
         except OSError as e:
+            self.stop_recording()
             self.win.prompts.error("Could not record", str(e))
             return
-        self._csv = csv.writer(self._csv_file)
-        self._csv.writerow(MONITOR_COLUMNS)
         self.record_button.setText("Stop recording")
         self.win.log(f"Recording to {path}")
 
+    def _record(self, row: list) -> None:
+        if not self._csv:
+            return
+        try:
+            self._csv.writerow(row)
+            self._csv_file.flush()
+        except OSError as e:
+            self.stop_recording()
+            self.win.prompts.error("Recording stopped", f"The file can't be written any more: {e}")
+
     def stop_recording(self) -> None:
-        if self._csv_file:
-            self._csv_file.close()
-        self._csv_file, self._csv = None, None
+        handle, self._csv_file, self._csv = self._csv_file, None, None
         self.record_button.setText("Record CSV…")
+        if handle:
+            try:
+                handle.close()
+            except OSError:
+                pass  # a disk that's full can't flush its last lines; the operator has been told
 
     # ---------------------------------------------------------------- script controls
     def pause(self) -> None:
-        if self.win.board is None:
+        board = self.win.board
+        if board is None:
             return
 
         def job(prog):
-            prog.check_can_stop()
+            prog.check_can_stop()  # again: the motor may have started during the prompt
             return prog.stop()
 
         def done(paused):
             self.win.log("Script paused, motor released." if paused else "No script on the board, motor released.")
             self.win.log("Note: C libraries' own threads keep running. This does not stop the engine.")
 
-        self.win.board.submit(job, done, self.win.report, exclusive=True)
+        def checked(_):
+            if self.win.prompts.confirm_pause() and not board.submit(job, done, self.win.report, exclusive=True):
+                self.win.prompts.error("Not paused", "The board disconnected, so the script was not paused.")
+
+        board.submit(lambda prog: prog.check_can_stop(), checked, self.win.report, exclusive=True)
 
     def start(self) -> None:
         board = self.win.board
         if board is None:
             return
 
-        def checked(_):
-            if not self.win.prompts.confirm_start():
-                return
-
-            def job(prog):
-                prog.check_can_start()  # again: the motor may have started during the prompt
-                return prog.start()
-
-            if not board.submit(job, started, self.win.report, exclusive=True):
-                self.win.prompts.error("Not started", "The board disconnected, so the script was not started.")
+        def job(prog):
+            prog.check_can_start()  # again: the motor may have started during the prompt
+            return prog.start()
 
         def started(ok):
             self.win.log("Script started." if ok else "Could not start: is a script stored on the board?")
             if not ok:
                 self.win.prompts.info("Script not started", "Could not start: is a script stored on the board?")
+
+        def checked(_):
+            if self.win.prompts.confirm_start() and not board.submit(job, started, self.win.report, exclusive=True):
+                self.win.prompts.error("Not started", "The board disconnected, so the script was not started.")
 
         board.submit(lambda prog: prog.check_can_start(), checked, self.win.report, exclusive=True)
 

@@ -22,10 +22,10 @@ if more than one board is plugged in.
 ## Desktop app
 
 ```bash
-pipx install --force '.[gui]'   # installs both `sky` and `sky-gui`
-sky-gui --simulate              # try it first: a simulated board, nothing touches hardware
-sky-gui --install-launcher      # add SKY programmer to the Ubuntu app grid
-sky-gui                         # the real thing
+pipx install --force --editable '.[gui]'   # installs `sky` and `sky-gui`, running from this folder
+sky-gui --simulate                         # try it first: a simulated board, nothing touches hardware
+sky-gui --install-launcher                 # add SKY programmer to the Ubuntu app grid
+sky-gui                                    # the real thing
 ```
 
 | Page | What it does |
@@ -34,6 +34,14 @@ sky-gui                         # the real thing
 | Configuration | Browse and search motor config, edit, review and write. App config is read only |
 | Backups | Back up, compare with the board, restore |
 | Console | Board messages, read-only terminal commands, the filtered REPL |
+| Updates | Status, pull and reset for this source folder, as on the SKY kiosk. Works with no board connected |
+
+The ☀/☾ button in the header switches between day and night, and the app remembers your choice.
+
+**Updates.** Pull only moves forward, so if this folder and GitHub have both changed, nothing is merged. Reset makes the
+folder match GitHub after you've seen what would be lost and typed `RESET`. Both need the board disconnected, and if the
+app runs from that folder you must restart it before connecting again. It uses your normal git login: if a pull can't
+log in, run `gh auth setup-git`.
 
 It runs the same engine and the same checks as `sky`, and a write always ends in a typed `YES`. It offers none of the
 overrides (`--allow-risky`, `--accept-drift`, `--allow-default-foc-params`, `--allow-other-board`, `--allow-motor`,

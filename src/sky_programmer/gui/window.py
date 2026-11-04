@@ -1,13 +1,19 @@
 """The main window: connection, pages, banners, and the one flow that writes to a board."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+import os
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QProcess, QSettings, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QProgressBar,
     QPushButton,
@@ -16,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import APP_NAME, backup, config
+from .. import APP_NAME, backup, config, gitops
 from ..config import MC_ROOT
 from ..errors import CommsError, SafetyRefusal, VerifyFailed
 from ..link import Link, list_ports, open_serial
@@ -27,29 +33,43 @@ from .config_page import ConfigPage
 from .console_page import ConsolePage
 from .dashboard import Dashboard
 from .prompts import Prompts
-from .widgets import Banner
+from .updates_page import UpdatesPage
+from .widgets import Banner, Pill
 from .wording import humanize
 
 SIMULATED_PORT = "Simulated board"
+NAV = ("Dashboard", "Configuration", "Backups", "Console", "Updates")
+
+
+def _default_settings_path() -> Path:
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return Path(base) / "sky-programmer" / "settings.ini"
 
 
 class MainWindow(QMainWindow):
     def __init__(self, *, link_factory=None, ports=list_ports, backup_dir=None, prompts=None, demo=None,
-                 preset_port=None):  # fmt: skip
+                 preset_port=None, settings_path=None, repo_dir=None):  # fmt: skip
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(theme.app_icon())
-        self.resize(1180, 780)
+        self.resize(1240, 820)
+        self.settings = QSettings(str(settings_path or _default_settings_path()), QSettings.Format.IniFormat)
+        self.theme_name = str(self.settings.value("theme", theme.system_theme()))
+        theme.apply(self.theme_name)
+
         self.demo = demo
         self.link_factory = link_factory or (lambda port: Link(open_serial(port)))
         if demo is not None:
             self.link_factory = lambda port: Link(demo)
             ports = lambda: [SIMULATED_PORT]  # noqa: E731
-        self.ports, self.preset_port = ports, preset_port
+        self.ports = ports
+        self._port_chosen = bool(preset_port)
         self.backup_dir = str(backup_dir or backup.default_dir())
         self.prompts = prompts or Prompts(self)
         self.board, self.info, self.layout = None, None, None
         self.script_paused = False
+        self.code_stale = False
+        self._paused_uuids: set = set()  # this app's pauses, remembered across a reconnect
         self._connecting, self._closing = False, False
 
         central = QWidget()
@@ -58,29 +78,38 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         outer.addWidget(self._build_header())
-        outer.addLayout(self._build_banners())
         body = QHBoxLayout()
         body.setSpacing(0)
         self.nav = QListWidget()
         self.nav.setObjectName("Nav")
-        self.nav.setFixedWidth(170)
+        self.nav.setFixedWidth(186)
+        self.nav.setIconSize(QSize(20, 20))
         self.stack = QStackedWidget()
         self.dashboard, self.config_page = Dashboard(self), ConfigPage(self)
         self.backups_page, self.console = BackupsPage(self), ConsolePage(self)
-        self.pages = (self.dashboard, self.config_page, self.backups_page, self.console)
+        saved_repo = self.settings.value("repo")
+        self.updates_page = UpdatesPage(self, repo_dir or saved_repo or gitops.find_checkout())
+        self.board_pages = (self.dashboard, self.config_page, self.backups_page, self.console)
+        self.pages = (*self.board_pages, self.updates_page)
         self.welcome = self._build_welcome()
         self.stack.addWidget(self.welcome)
-        for name, page in zip(("Dashboard", "Configuration", "Backups", "Console"), self.pages, strict=True):
-            self.nav.addItem(name)
+        for name, page in zip(NAV, self.pages, strict=True):
+            self.nav.addItem(QListWidgetItem(name))
             self.stack.addWidget(page)
+        self._paint_nav_icons()
         self.nav.currentRowChanged.connect(self._nav_changed)
         body.addWidget(self.nav)
-        body.addWidget(self.stack, 1)
+        right = QVBoxLayout()
+        right.setSpacing(0)
+        right.addLayout(self._build_banners())
+        right.addWidget(self.stack, 1)
+        body.addLayout(right, 1)
         outer.addLayout(body, 1)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setFixedWidth(140)
+        self.progress.setTextVisible(False)
         self.progress.hide()
         self.statusBar().addPermanentWidget(self.progress)
         self.statusBar().addPermanentWidget(QLabel("Stage 1. Not yet bench-tested on a real board."))
@@ -88,6 +117,8 @@ class MainWindow(QMainWindow):
         self._ports_timer = QTimer(self)
         self._ports_timer.timeout.connect(self.refresh_ports)
         self._ports_timer.start(2000)
+        if preset_port:
+            self.port_combo.setCurrentText(preset_port)
         self.refresh_ports()
         self._sync()
         if demo is not None:
@@ -98,27 +129,40 @@ class MainWindow(QMainWindow):
         header = QWidget()
         header.setObjectName("Header")
         row = QHBoxLayout(header)
-        row.setContentsMargins(14, 8, 14, 8)
+        row.setContentsMargins(14, 9, 14, 9)
+        row.setSpacing(10)
         logo = QLabel()
-        logo.setPixmap(theme.logo_pixmap(36, self.devicePixelRatioF()))
+        logo.setObjectName("LogoChip")  # the logo's dark blue needs a light background at night
+        logo.setPixmap(theme.logo_pixmap(30, self.devicePixelRatioF()))
         logo.setAccessibleName("SkyScouter logo")
         title = QLabel(APP_NAME)
         title.setObjectName("AppTitle")
-        self.board_label = QLabel("Not connected")
+        self.pill = Pill()
+        self.board_label = QLabel("")
         self.board_label.setObjectName("Muted")
+        self.theme_button = QPushButton()
+        self.theme_button.setObjectName("ThemeToggle")
+        self.theme_button.clicked.connect(self.toggle_theme)
         self.port_combo = QComboBox()
         self.port_combo.setEditable(True)
-        self.port_combo.setMinimumWidth(170)
+        self.port_combo.setMinimumWidth(190)
+        self.port_combo.setAccessibleName("Serial port")
         self.port_combo.lineEdit().setPlaceholderText("No board found")
+        self.port_combo.lineEdit().textEdited.connect(self._port_touched)
+        self.port_combo.activated.connect(self._port_touched)
         self.connect_button = QPushButton("Connect")
         self.connect_button.setObjectName("Primary")
+        self.connect_button.setMinimumWidth(104)
         self.connect_button.clicked.connect(self.toggle_connection)
         row.addWidget(logo)
         row.addWidget(title)
-        row.addSpacing(18)
+        row.addSpacing(8)
+        row.addWidget(self.pill)
         row.addWidget(self.board_label, 1)
+        row.addWidget(self.theme_button)
         row.addWidget(self.port_combo)
         row.addWidget(self.connect_button)
+        self._paint_theme_button()
         return header
 
     def _build_banners(self) -> QVBoxLayout:
@@ -133,11 +177,21 @@ class MainWindow(QMainWindow):
         if self.demo is not None:
             self.turning_box.toggled.connect(lambda on: setattr(self.demo, "turning", on))
             self.demo_banner.show()
+        self.stale_banner = Banner("warning")
+        self.stale_banner.text.setText("<b>⚠ The code in this app's folder changed.</b> Restart before connecting, so "
+                                       "the checks that run are the ones in the folder.")  # fmt: skip
+        restart = QPushButton("Restart now")
+        restart.clicked.connect(self.restart_app)
+        self.stale_banner.row.addWidget(restart)
         self.paused_banner = Banner("warning")
-        self.paused_banner.text.setText("<b>⚠ Script paused by this app.</b> It has no throttle or kill control until "
-                                        "you start it or power-cycle the board.")  # fmt: skip
+        self.paused_banner.text.setText("<b>⚠ The script may be paused by this app.</b> A paused script has no "
+                                        "throttle or kill control until it's started or the board is power-cycled.")
         resume = QPushButton("Start script…")
         resume.clicked.connect(lambda: self.dashboard.start())
+        forget = QPushButton("I power-cycled it")
+        forget.setToolTip("Power-cycling restarts the script, and the board can't tell this app that it happened")
+        forget.clicked.connect(self.forget_pause)
+        self.paused_banner.row.addWidget(forget)
         self.paused_banner.row.addWidget(resume)
         self.baseline_banner = Banner("info")
         self.baseline_banner.text.setText("<b>No backup of this board yet.</b> Writes need one. Take it just after "
@@ -146,7 +200,7 @@ class MainWindow(QMainWindow):
         self.baseline_button.clicked.connect(lambda: self.backups_page.backup_now())
         self.baseline_banner.row.addWidget(self.baseline_button)
         self.note_banner = Banner("warning")
-        for b in (self.demo_banner, self.paused_banner, self.note_banner, self.baseline_banner):
+        for b in (self.demo_banner, self.stale_banner, self.paused_banner, self.note_banner, self.baseline_banner):
             col.addWidget(b)
         return col
 
@@ -154,44 +208,76 @@ class MainWindow(QMainWindow):
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.setSpacing(14)
+        card = QFrame()
+        card.setObjectName("Card")
+        card.setMaximumWidth(520)
+        col = QVBoxLayout(card)
+        col.setContentsMargins(36, 30, 36, 30)
+        col.setSpacing(14)
         logo = QLabel()
-        logo.setPixmap(theme.logo_pixmap(170, self.devicePixelRatioF()))
+        logo.setObjectName("LogoChipLarge")
+        logo.setPixmap(theme.logo_pixmap(130, self.devicePixelRatioF()))
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo.setAccessibleName("SkyScouter logo")
         title = QLabel(APP_NAME)
         title.setObjectName("PageTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        text = QLabel("Plug in the board and close VESC Tool, since only one program can use the port. Then click "
-                      "Connect.\nConnecting only reads: nothing changes on the board until you confirm a write.")
-        text.setObjectName("Muted")
-        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        text = QLabel("<b>1.</b> Plug in the board.<br><b>2.</b> Close VESC Tool: only one program can use the "
+                      "port.<br><b>3.</b> Click <b>Connect</b>.<br><br>Connecting only reads. Nothing changes on the "
+                      "board until you confirm a write.")  # fmt: skip
         text.setWordWrap(True)
         for w in (logo, title, text):
-            lay.addWidget(w)
+            col.addWidget(w)
+        lay.addWidget(card, 0, Qt.AlignmentFlag.AlignCenter)
         return page
 
+    # ---------------------------------------------------------------- day and night
+    def toggle_theme(self) -> None:
+        self.set_theme("night" if self.theme_name == "day" else "day")
+
+    def set_theme(self, name: str) -> None:
+        self.theme_name = theme.apply(name).name
+        self.settings.setValue("theme", self.theme_name)
+        self._paint_theme_button()
+        self._paint_nav_icons()
+        self.config_page.retheme()
+        self.update()
+
+    def _paint_theme_button(self) -> None:
+        night = self.theme_name == "night"
+        self.theme_button.setText("☾  Night" if night else "☀  Day")
+        self.theme_button.setToolTip("Switch to day" if night else "Switch to night")
+        self.theme_button.setAccessibleName(f"Theme: {'night' if night else 'day'}. Click to switch.")
+
+    def _paint_nav_icons(self) -> None:
+        for row, name in enumerate(NAV[: self.nav.count()]):
+            self.nav.item(row).setIcon(theme.nav_icon(name))
+
     # ---------------------------------------------------------------- connecting
+    def _port_touched(self, *_) -> None:
+        self._port_chosen = bool(self.port_combo.currentText().strip())
+
     def refresh_ports(self) -> None:
+        """A port the operator chose or typed is never replaced. Otherwise fill in the only board, and never guess."""
         if self.board is not None:
             return
         found = self.ports()
         have = [self.port_combo.itemText(i) for i in range(self.port_combo.count())]
         if found == have:
             return
-        typed = self.port_combo.currentText()
+        text = self.port_combo.currentText()
+        self.port_combo.blockSignals(True)
         self.port_combo.clear()
         self.port_combo.addItems(found)
-        if self.preset_port:
-            self.port_combo.setCurrentText(self.preset_port)
-        elif typed and typed in found:
-            self.port_combo.setCurrentText(typed)
+        if self._port_chosen:
+            self.port_combo.setCurrentText(text)
         elif len(found) == 1:
             self.port_combo.setCurrentIndex(0)
-        else:  # with several boards, the operator picks: guessing could write to the wrong one
+        else:
             self.port_combo.setCurrentIndex(-1)
             self.port_combo.clearEditText()
             self.port_combo.lineEdit().setPlaceholderText("Choose a port" if found else "No board found")
+        self.port_combo.blockSignals(False)
 
     def toggle_connection(self) -> None:
         if self.board is not None:
@@ -203,10 +289,14 @@ class MainWindow(QMainWindow):
         port = self.port_combo.currentText().strip()
         if self.board is not None:
             return
+        if self.code_stale:
+            self.prompts.info("Restart first", "The code in this app's folder changed. Restart before connecting.")
+            return
         if not port:
             self.prompts.error("No port chosen", "Plug in the board, or choose or type its port.")
             return
-        self.board = BoardThread(lambda: self.link_factory(port), self.backup_dir, self)
+        self.port_in_use = port
+        self.board = BoardThread(lambda: self.link_factory(port), self.backup_dir, self, set(self._paused_uuids))
         self.board.opened.connect(self._on_opened)
         self.board.closed.connect(self._on_closed)
         self.board.sample.connect(self._on_sample)
@@ -214,7 +304,8 @@ class MainWindow(QMainWindow):
         self.board.busy_changed.connect(lambda _: self._sync())
         self.board.paused_changed.connect(self._on_paused)
         self._connecting = True
-        self.board_label.setText(f"Connecting to {port}…")
+        self.pill.show_state("busy", "◌  Connecting")
+        self.board_label.setText(port)
         self.board.start()
         self._sync()
 
@@ -227,11 +318,12 @@ class MainWindow(QMainWindow):
     def _on_opened(self, info: dict) -> None:
         self._connecting = False
         self.info, self.layout = info, info["layout"]
+        self.pill.show_state("ok", "●  Connected")
         self.set_mode(info["mode"])
         self.baseline_banner.setVisible(info["layout"] is not None and not info["has_baseline"])
         self.note_banner.setVisible(bool(info["note"]))
         self.note_banner.text.setText(humanize(info["note"]))
-        for page in self.pages:
+        for page in self.board_pages:
             if hasattr(page, "on_connected"):
                 page.on_connected(info)
         self.nav.setCurrentRow(0)
@@ -247,21 +339,24 @@ class MainWindow(QMainWindow):
             board.deleteLater()
         if self._closing:
             return
-        for page in self.pages:
+        for page in self.board_pages:
             page.reset()
         self.paused_banner.hide()
         self.baseline_banner.hide()
         self.note_banner.hide()
-        self.board_label.setText("Not connected")
-        self.stack.setCurrentWidget(self.welcome)
-        self.nav.clearSelection()
+        self.pill.show_state("idle", "○  Not connected")
+        self.board_label.setText("")
+        if self.stack.currentWidget() is not self.updates_page:
+            self.stack.setCurrentWidget(self.welcome)
+            self.nav.setCurrentRow(-1)
         self._sync()
         if reason:
             self.log(f"Disconnected: {reason}")
             self.prompts.error("Disconnected", humanize(reason))
         if was_paused:
-            self.prompts.info("The script is still paused", "The board keeps the script paused, with no throttle or "
-                              "kill control, until it's started or the board is power-cycled.")  # fmt: skip
+            self.prompts.info("The script may still be paused", "A paused script stays paused, with no throttle or "
+                              "kill control, until it's started or the board is power-cycled. If the board restarted, "
+                              "the script is running again.")  # fmt: skip
 
     def _on_sample(self, sample: dict) -> None:
         self.dashboard.on_sample(sample)
@@ -270,6 +365,30 @@ class MainWindow(QMainWindow):
     def _on_paused(self, paused: bool) -> None:
         self.script_paused = paused
         self.paused_banner.setVisible(paused)
+        if self.info:
+            uuid = self.info["ident"]["uuid"]
+            (self._paused_uuids.add if paused else self._paused_uuids.discard)(uuid)
+
+    def forget_pause(self) -> None:
+        if self.board is not None:
+            self.board.submit(lambda prog: prog.forget_pause(), exclusive=True)
+
+    # ---------------------------------------------------------------- updates
+    def remember_repo(self, path) -> None:
+        self.settings.setValue("repo", str(path))
+
+    def code_changed(self, running_from_repo: bool, repo) -> None:
+        if running_from_repo:
+            self.code_stale = True
+            self.stale_banner.show()
+            self._sync()
+        else:
+            self.prompts.info("Folder updated", "This app is an installed copy, so it still runs the old code. To use "
+                              f"the new code, run:\n\npipx install --force --editable '{repo}[gui]'")  # fmt: skip
+
+    def restart_app(self) -> None:
+        if self.close():
+            QProcess.startDetached(sys.executable, ["-m", "sky_programmer.gui", *sys.argv[1:]])
 
     # ---------------------------------------------------------------- shared by the pages
     def log(self, text: str) -> None:
@@ -300,11 +419,16 @@ class MainWindow(QMainWindow):
             parts.append(f"test build {ident['test_version']}")
         if mode:
             parts.append(mode.replace("MOTOR_TYPE_", ""))
+        parts.append(f"UUID …{ident['uuid'][-6:]}")
         self.board_label.setText("  ·  ".join(parts))
         self.board_label.setToolTip(f"UUID {ident['uuid']}")
 
     def set_baseline_present(self) -> None:
         self.baseline_banner.hide()
+
+    def _write_target(self) -> str:
+        ident = self.info["ident"]
+        return f"{ident['hw']} on {self.port_in_use}, UUID {ident['uuid']}"
 
     def write_flow(self, make_plan, after=None, nothing_text="Already set: nothing to write, so flash is left "
                    "alone.") -> None:  # fmt: skip
@@ -325,9 +449,8 @@ class MainWindow(QMainWindow):
                 self.prompts.info("Nothing to write", nothing_text)
                 return
             lay = self.layout
-            rows = [(k, config.show(lay, MC_ROOT, k, a), config.show(lay, MC_ROOT, k, b))
-                    for k, (a, b) in sorted(plan.diff.items())]  # fmt: skip
-            if not self.prompts.confirm_write(rows, plan.warnings):
+            rows = [(k, *config.show_pair(lay, MC_ROOT, k, a, b)) for k, (a, b) in sorted(plan.diff.items())]
+            if not self.prompts.confirm_write(rows, plan.warnings, self._write_target()):
                 self.log("Cancelled. Nothing was written.")
                 return
             if not board.submit(lambda prog: prog.commit(plan), wrote, failed, exclusive=True):
@@ -339,9 +462,10 @@ class MainWindow(QMainWindow):
             for k, (want, got) in result["limited"].items():
                 lines.append(f"Limited by firmware: {k} asked {config.show(lay, MC_ROOT, k, want)}, "
                              f"stored {config.show(lay, MC_ROOT, k, got)}.")  # fmt: skip
-            lines += ["The firmware doesn't report whether its flash save worked, so power-cycle and read again to "
-                      "confirm a change you depend on.",
-                      "The script is paused. Start it or power-cycle to run it again."]  # fmt: skip
+            lines.append("The firmware doesn't report whether its flash save worked, so power-cycle and read again to "
+                         "confirm a change you depend on.")  # fmt: skip
+            if self.script_paused:
+                lines.append("The script is paused. Start it or power-cycle to run it again.")
             self.log(lines[0])
             self.set_baseline_present()
             self._after_write(after)
@@ -354,13 +478,22 @@ class MainWindow(QMainWindow):
         board.submit(plan_job, planned, self.report, exclusive=True)
 
     def _after_write(self, after) -> None:
-        self.backups_page.refresh()
-        self.config_page.read() if after is None else after()
+        """Refreshing a list must never swallow the message about the write itself."""
+        try:
+            self.backups_page.refresh()
+            self.config_page.read() if after is None else after()
+        except Exception as e:
+            self.log(f"Could not refresh the page after the write: {e!r}")
 
     # ---------------------------------------------------------------- state
     def _nav_changed(self, row: int) -> None:
-        if row >= 0 and self.info:
-            self.stack.setCurrentWidget(self.pages[row])
+        if row < 0:
+            return
+        page = self.pages[row]
+        if page is self.updates_page or self.info:
+            self.stack.setCurrentWidget(page)
+            if page is self.updates_page:
+                self.updates_page.refresh()
 
     def _sync(self) -> None:
         connected = self.info is not None and self.board is not None
@@ -368,20 +501,27 @@ class MainWindow(QMainWindow):
         config_ok = connected and self.layout is not None
         for page in self.pages:
             page.set_state(connected, busy, config_ok)
-        self.nav.setEnabled(connected)
+        for row in range(len(self.board_pages)):
+            item = self.nav.item(row)
+            flags = item.flags()
+            enabled = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+            item.setFlags(flags | enabled if connected else flags & ~enabled)
         self.port_combo.setEnabled(self.board is None)
         self.connect_button.setText("Disconnect" if self.board is not None else "Connect")
-        self.connect_button.setEnabled(not self._connecting and not busy)
+        self.connect_button.setEnabled(not self._connecting and not busy and not self.updates_page.busy)
         self.baseline_button.setEnabled(config_ok and not busy)
         self.progress.setVisible(busy)
 
     def closeEvent(self, event) -> None:
-        board = self.board
-        if board is None:
+        if self.updates_page.busy:
+            self.prompts.info("Please wait", "An update is running. Closing now could leave the folder half changed.")
+            event.ignore()
+            return
+        if self.board is None:
             self._ports_timer.stop()
             event.accept()
             return
-        if board.busy:
+        if self.board.busy:
             self.prompts.info("Please wait", "The app is talking to the board. Closing now could interrupt a write.")
             event.ignore()
             return
@@ -391,6 +531,10 @@ class MainWindow(QMainWindow):
         self._closing = True
         self._ports_timer.stop()
         self.dashboard.stop_recording()
-        board.shutdown()
-        board.wait(10000)
+        board = self.board  # read again: the board may have gone during the question above
+        if board is not None:
+            board.shutdown()
+            if not board.wait(10000):  # stuck in the USB driver. No write is running: closing was refused above
+                board.terminate()
+                board.wait(2000)
         event.accept()

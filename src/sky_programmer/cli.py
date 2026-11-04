@@ -49,7 +49,8 @@ def _print_plan(prog, plan) -> None:
     lay = prog.layout()
     print("Planned changes:")
     for k, (a, b) in sorted(plan.diff.items()):
-        print(f"  {k}: {config.show(lay, MC_ROOT, k, a)} -> {config.show(lay, MC_ROOT, k, b)}")
+        left, right = config.show_pair(lay, MC_ROOT, k, a, b)
+        print(f"  {k}: {left} -> {right}")
     for w in plan.warnings:
         print(f"Warning: {w}")
 
@@ -149,6 +150,10 @@ def cmd_set(prog, args) -> int:
 
 
 def cmd_backup(prog, args) -> int:
+    drift = prog.baseline_drift()
+    if drift:
+        print(f"Note: this makes {len(drift)} field(s) that differ from the last backup the new settings: "
+              f"{', '.join(sorted(drift))}. A script's temporary changes would be stored by the next write.")
     print(f"Backup saved: {prog.save_backup()}")
     return 0
 

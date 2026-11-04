@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QThread, Signal
 
-from .. import backup, config
+from .. import config
 from ..config import MC_ROOT
 from ..errors import CommsError, SafetyRefusal, SkyError
 from ..programmer import Programmer
@@ -38,9 +38,10 @@ class BoardThread(QThread):
     message = Signal(str)
     _job_done = Signal(int, object, object)
 
-    def __init__(self, open_link: Callable, backup_dir, parent=None):
+    def __init__(self, open_link: Callable, backup_dir, parent=None, assume_paused=()):
         super().__init__(parent)
         self._open_link, self._backup_dir = open_link, backup_dir
+        self._assume_paused = assume_paused  # boards this app paused earlier: reconnecting doesn't resume them
         self._jobs: queue.Queue = queue.Queue()
         self._callbacks: dict = {}
         self._next_token = 0
@@ -94,6 +95,7 @@ class BoardThread(QThread):
             link = self._open_link()
             self._prog = Programmer(link, self._backup_dir, say=self.message.emit)
             self.opened.emit(self._open())
+            self._report_paused()
             reason = self._loop()
         except SkyError as e:
             reason = str(e)
@@ -101,19 +103,23 @@ class BoardThread(QThread):
             reason = f"unexpected reply from the board: {e!r}"
         finally:
             self._cancel_queued()
-            if link is not None:
-                link.close()
+            try:
+                if link is not None:
+                    link.close()
+            except Exception as e:  # a vanished device can fail to close; the window must still hear about it
+                self.message.emit(f"Closing the port failed: {e}")
             self.closed.emit(reason)
 
     def _open(self) -> dict:
         prog = self._prog
         ident, v = prog.identify(), prog.values()
+        prog.script_paused = ident["uuid"] in self._assume_paused
         info = {"ident": ident, "values": v, "fault": prog.fault_name(v["fault_code"]), "layout": None, "note": "",
                 "mode": "", "has_baseline": False}  # fmt: skip
         try:
             lay = prog.layout()
             info["layout"] = lay
-            info["has_baseline"] = backup.latest(self._backup_dir, ident["uuid"], ident["fw"]) is not None
+            info["has_baseline"] = prog.baseline() is not None
             info["mode"] = config.show(lay, MC_ROOT, "motor_type", prog.read_conf(MC_ROOT)["motor_type"])
         except SafetyRefusal as e:  # unsupported firmware, or a script changing the config right now
             info["note"] = str(e)

@@ -1,13 +1,17 @@
 """The USB link. This is the only module that writes to the serial port."""
 from __future__ import annotations
 
+import fcntl
 import glob
+import termios
 import time
 from collections import deque
 
 from . import protocol as p
 from .errors import CommsError, SafetyRefusal
 from .safety import check_packet
+
+WRITE_TIMEOUT_S = 2.0  # a wedged USB link must become an error, never a hang
 
 
 def list_ports() -> list[str]:
@@ -26,8 +30,21 @@ def find_port() -> str:
 def open_serial(port: str):
     import serial
 
+    class ExclusiveSerial(serial.Serial):
+        def close(self) -> None:
+            # The kernel keeps this flag while anything else holds the port, which would block the next connection.
+            if self.is_open:
+                try:
+                    fcntl.ioctl(self.fileno(), termios.TIOCNXCL)
+                except OSError:
+                    pass
+            super().close()
+
     try:
-        return serial.Serial(port, 115200, timeout=0.05, exclusive=True)
+        ser = ExclusiveSerial(port, 115200, timeout=0.05, write_timeout=WRITE_TIMEOUT_S, exclusive=True)
+        # exclusive= is only an advisory lock, so a program opening the port after us could still take the replies.
+        fcntl.ioctl(ser.fileno(), termios.TIOCEXCL)
+        return ser
     except (OSError, ValueError, serial.SerialException) as e:
         raise CommsError(f"cannot open {port}: {e}. Is VESC Tool still connected?") from e
 

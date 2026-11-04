@@ -23,7 +23,7 @@ sky-gui = "sky_programmer.gui:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-sky_programmer = ["layouts/*.json", "gui/assets/*.png"]
+sky_programmer = ["layouts/*.json", "gui/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

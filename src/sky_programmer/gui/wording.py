@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 _COMMANDS = (
+    (r"Reconnect and run `sky status`, then", "Reconnect, then"),
     (r"`sky backup`", "Back up now"),
     (r"`sky stop`", "Pause script"),
     (r"`sky start`", "Start script"),

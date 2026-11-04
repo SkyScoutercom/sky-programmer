@@ -1,5 +1,6 @@
 """The desktop app against the simulated board: the real window, the real worker thread, no real dialogs."""
 import os
+import subprocess
 import threading
 import time
 from importlib import resources
@@ -10,13 +11,14 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+from PySide6.QtCore import QEvent, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication, QComboBox  # noqa: E402
 
 from sky_programmer import backup  # noqa: E402
 from sky_programmer import protocol as p
 from sky_programmer.gui import theme  # noqa: E402
 from sky_programmer.gui.app import install_launcher  # noqa: E402
-from sky_programmer.gui.config_page import VALUE, NoWheelCombo  # noqa: E402
+from sky_programmer.gui.config_page import NOTE, VALUE, NoWheelCombo  # noqa: E402
 from sky_programmer.gui.demo import DemoBoard  # noqa: E402
 from sky_programmer.gui.prompts import TypedConfirm  # noqa: E402
 from sky_programmer.gui.window import MainWindow  # noqa: E402
@@ -33,11 +35,29 @@ class FakePrompts:
     def __init__(self):
         self.write_answer, self.start_answer, self.repl_answer, self.close_answer = True, True, True, True
         self.errors, self.infos, self.write_requests, self.differences = [], [], [], []
-        self.starts, self.repl_asks = 0, 0
+        self.starts, self.repl_asks, self.pauses = 0, 0, 0
+        self.pause_answer, self.baseline_answer, self.reset_answer = True, True, True
+        self.baseline_requests, self.resets = [], []
 
-    def confirm_write(self, rows, warnings):
+    def confirm_write(self, rows, warnings, target=""):
         self.write_requests.append((rows, warnings))
+        self.write_target = target
         return self.write_answer
+
+    def confirm_pause(self):
+        self.pauses += 1
+        return self.pause_answer
+
+    def confirm_new_baseline(self, rows):
+        self.baseline_requests.append(rows)
+        return self.baseline_answer
+
+    def confirm_reset(self, preview):
+        self.resets.append(preview)
+        return self.reset_answer
+
+    def ask_folder(self, start):
+        return getattr(self, "folder", "")
 
     def confirm_start(self):
         self.starts += 1
@@ -121,7 +141,8 @@ def gui(tmp_path):
         fake = CheckedBoard(**knobs)
         prompts = FakePrompts()
         win = MainWindow(link_factory=lambda port: Link(fake, clock=fake.clock, sleep=fake.clock.sleep),
-                         ports=lambda: ["/dev/ttyFAKE"], backup_dir=tmp_path / "backups", prompts=prompts)
+                         ports=lambda: ["/dev/ttyFAKE"], backup_dir=tmp_path / "backups", prompts=prompts,
+                         settings_path=tmp_path / "settings.ini", repo_dir=tmp_path / "no-repo")
         win.show()
         made.append((win, fake))
         if baseline:
@@ -147,6 +168,8 @@ def gui(tmp_path):
         win.close()
         assert fake.violations == []
         assert threading.main_thread().ident not in fake.threads, "the GUI thread touched the port"
+        win.deleteLater()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
 
 
@@ -187,6 +210,25 @@ def test_live_values_reach_the_dashboard(gui):
     assert win.dashboard.charts["v_in"].points
 
 
+def test_charts_and_tiles_blank_when_values_stop(gui):
+    win, fake, _ = gui()
+    wait_until(lambda: win.dashboard.charts["v_in"].points)
+    win.dashboard._last_sample = time.monotonic() - 10
+    win.dashboard._check_stale()
+    assert win.dashboard.tiles["bus"].value.text() == "—"
+    assert all(chart.stale for chart in win.dashboard.charts.values())
+    wait_until(lambda: not win.dashboard.charts["v_in"].stale)
+
+
+def test_a_fault_is_logged_so_it_outlives_the_tile(gui):
+    win, fake, _ = gui()
+    fake.fault = 2
+    wait_until(lambda: "UNDER_VOLTAGE" in win.console.output.toPlainText())
+    fake.fault = 0
+    wait_until(lambda: "NONE" in win.dashboard.tiles["fault"].value.text())
+    assert "UNDER_VOLTAGE" in win.console.output.toPlainText()
+
+
 def test_a_fault_is_shown_with_words_not_only_colour(gui):
     win, fake, _ = gui()
     fake.fault = 2
@@ -203,6 +245,32 @@ def test_unsupported_firmware_can_be_read_but_not_configured(gui):
     assert "not supported" in win.note_banner.text.text()
     wait_until(lambda: win.dashboard.tiles["bus"].value.text() != "—")
     assert fake.written == []
+
+
+def test_a_chosen_or_typed_port_is_never_changed_behind_your_back(gui):
+    win, _, _ = gui(connect=False)
+    win.port_combo.lineEdit().setText("/dev/ttyUSB3")
+    win.port_combo.lineEdit().textEdited.emit("/dev/ttyUSB3")
+    win.ports = lambda: ["/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2"]
+    win.refresh_ports()
+    assert win.port_combo.currentText() == "/dev/ttyUSB3"
+    win.ports = lambda: ["/dev/ttyACM0"]
+    win.refresh_ports()
+    assert win.port_combo.currentText() == "/dev/ttyUSB3"
+
+
+def test_preset_port_is_kept_even_if_it_is_not_listed(gui, tmp_path):
+    win = MainWindow(ports=lambda: [], backup_dir=tmp_path, prompts=FakePrompts(), preset_port="/dev/ttyUSB7",
+                     settings_path=tmp_path / "s.ini", repo_dir=tmp_path / "no-repo")
+    assert win.port_combo.currentText() == "/dev/ttyUSB7"
+    win.close()
+
+
+def test_the_write_dialog_names_the_exact_board(gui):
+    win, _, prompts = gui()
+    edit_and_review(win, l_temp_fet_start="84")
+    assert win.info is not None
+    assert "0102030405060708090a0b0c" in prompts.write_target
 
 
 def test_several_ports_are_never_guessed(gui):
@@ -344,7 +412,7 @@ def test_turning_motor_refuses_a_write_and_keeps_the_script(gui):
 
 def test_motor_starting_during_the_dialog_still_refuses_the_write(gui):
     win, fake, prompts = gui()
-    def spin_up(rows, warnings):
+    def spin_up(rows, warnings, target=""):
         fake.erpm = 5000
         return True
     prompts.confirm_write = spin_up
@@ -357,7 +425,7 @@ def test_motor_starting_during_the_dialog_still_refuses_the_write(gui):
 
 def test_config_changing_during_the_dialog_refuses_the_write(gui):
     win, fake, prompts = gui()
-    def someone_else_writes(rows, warnings):
+    def someone_else_writes(rows, warnings, target=""):
         from sky_programmer import config
         fake.mc = config.patch_blob(fake.mc, win.layout, "mc_configuration", {"l_max_erpm": 12345.0})
         return True
@@ -442,6 +510,55 @@ def test_nonsense_input_is_caught_in_the_table(gui):
     assert not win.config_page.review_button.isEnabled()
 
 
+def test_table_is_disabled_during_a_write(gui):
+    win, _, _ = gui()
+    gate = threading.Event()
+    win.board.submit(lambda prog: gate.wait(10), exclusive=True)
+    QApplication.processEvents()
+    assert not win.config_page.tabs.isEnabled()
+    gate.set()
+    settle(win)
+    assert win.config_page.tabs.isEnabled()
+
+
+def test_a_failed_read_clears_the_table_and_keeps_saying_so(gui):
+    win, fake, _ = gui()
+    page = win.config_page
+    assert page.motor.rows
+    fake.change_mc_on_read = True
+    page.read()
+    settle(win)
+    wait_until(lambda: not page.motor.rows)
+    assert "changed between two reads" in page.status.text()
+    page._sync_buttons()
+    assert "changed between two reads" in page.status.text()
+    assert not page.review_button.isEnabled()
+    assert page.read_button.isEnabled()
+
+
+def test_a_value_outside_the_enum_is_shown_as_it_is(gui):
+    win, fake, _ = gui(values={"foc_sensor_mode": 77})
+    table = win.config_page.motor
+    assert table.text_of("foc_sensor_mode") == "77"
+    assert "isn't a valid choice" in table.item(table.rows["foc_sensor_mode"], NOTE).text()
+    assert table.staged == {}
+
+
+def test_hall_table_is_locked_with_its_one_byte_meaning(gui):
+    win, _, _ = gui()
+    table = win.config_page.motor
+    row = table.rows["hall_table[0]"]
+    assert table.cellWidget(row, VALUE) is None
+    assert not table.item(row, VALUE).flags() & table.item(row, VALUE).flags().ItemIsEditable
+    assert "255 means -1" in table.item(row, NOTE).text()
+
+
+def test_phase_filter_fault_switch_is_locked(gui):
+    win, _, _ = gui()
+    table = win.config_page.motor
+    assert table.cellWidget(table.rows["foc_phase_filter_disable_fault"], VALUE) is None
+
+
 def test_scrolling_over_a_dropdown_cannot_change_a_setting(gui):
     win, _, _ = gui()
     combo = win.config_page.motor.cellWidget(win.config_page.motor.rows["motor_type"], VALUE)
@@ -469,6 +586,30 @@ def test_reading_cannot_silently_drop_edits(gui):
 
 
 # ---------------------------------------------------------------------- script controls
+def test_pause_needs_the_operator_to_state_the_engine_is_stopped(gui):
+    win, fake, prompts = gui()
+    prompts.pause_answer = False
+    win.dashboard.pause()
+    settle(win)
+    assert prompts.pauses == 1
+    assert fake.script_running is True
+    assert fake.released is False
+
+
+def test_motor_starting_during_the_pause_prompt_refuses(gui):
+    win, fake, prompts = gui()
+
+    def spin_up():
+        fake.erpm = 5000
+        return True
+
+    prompts.confirm_pause = spin_up
+    win.dashboard.pause()
+    settle(win)
+    assert fake.script_running is True
+    assert prompts.errors[-1][0] == "Refused"
+
+
 def test_pause_refused_while_turning(gui):
     win, fake, prompts = gui()
     fake.erpm = 5000
@@ -601,6 +742,65 @@ def test_board_messages_appear_in_the_console(gui):
 
 
 # ---------------------------------------------------------------------- backups
+def _script_changes(win, fake, **values):
+    from sky_programmer import config
+
+    fake.mc = config.patch_blob(fake.mc, win.layout, "mc_configuration", values)
+
+
+def test_backing_up_over_drift_shows_what_it_would_accept_and_can_be_refused(gui):
+    win, fake, prompts = gui()
+    _script_changes(win, fake, l_current_max=20.0)
+    before = win.backups_page.table.rowCount()
+    prompts.baseline_answer = False
+    win.backups_page.backup_now()
+    settle(win)
+    assert [row[0] for row in prompts.baseline_requests[0]] == ["l_current_max"]
+    assert win.backups_page.table.rowCount() == before
+    edit_and_review(win, l_temp_fet_start="84")
+    assert fake.written == []
+    assert prompts.errors[-1][0] == "Refused"
+
+
+def test_backing_up_with_no_drift_does_not_ask(gui):
+    win, _, prompts = gui()
+    win.backups_page.backup_now()
+    settle(win)
+    assert prompts.baseline_requests == []
+
+
+def test_a_backup_file_that_is_valid_json_but_wrong_cannot_break_connecting_or_listing(gui, tmp_path):
+    win, _, prompts = gui(connect=False)
+    folder = tmp_path / "backups" / "0102030405060708090a0b0c"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "99999999-000000-000000000-manual.json").write_text("[]")
+    win.connect_board()
+    wait_until(lambda: win.info is not None or win.board is None)
+    settle(win)
+    assert win.info is not None
+    assert "Damaged" in win.backups_page.table.item(0, 1).text()
+
+
+def test_a_failed_write_is_reported_even_if_refreshing_the_list_fails(gui, monkeypatch):
+    win, fake, prompts = gui(write_mode="ignored")
+
+    def broken():
+        raise TypeError("list refresh failed")
+
+    monkeypatch.setattr(win.backups_page, "refresh", broken)
+    edit_and_review(win, l_temp_fet_start="84")
+    wait_until(lambda: prompts.errors)
+    assert prompts.errors[-1][0] == "The write did not verify"
+
+
+def test_written_message_only_mentions_a_pause_if_there_was_one(gui):
+    win, _, prompts = gui(script_present=False)
+    edit_and_review(win, l_temp_fet_start="84")
+    wait_until(lambda: prompts.infos)
+    assert prompts.infos[-1][0] == "Written"
+    assert "paused" not in prompts.infos[-1][1]
+
+
 def test_backup_now_lists_it(gui):
     win, _, _ = gui(baseline=False)
     assert win.backups_page.table.rowCount() == 0
@@ -682,6 +882,52 @@ def test_closing_with_a_paused_script_asks_first(gui):
     assert win.isVisible()
 
 
+def test_reconnecting_remembers_this_apps_pause(gui):
+    win, fake, prompts = gui()
+    win.dashboard.pause()
+    settle(win)
+    wait_until(lambda: win.script_paused)
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    win.connect_board()
+    wait_until(lambda: win.info is not None)
+    settle(win)
+    wait_until(lambda: not win.paused_banner.isHidden())
+    assert win.script_paused
+    win.console.repl_input.setText("(+ 1 2)")
+    prompts.repl_answer = False
+    win.console.send_repl()
+    settle(win)
+    assert prompts.repl_asks == 1
+    assert fake.script_running is False
+
+
+def test_operator_can_say_the_board_was_power_cycled(gui):
+    win, _, _ = gui()
+    win.dashboard.pause()
+    settle(win)
+    wait_until(lambda: win.script_paused)
+    win.forget_pause()
+    settle(win)
+    wait_until(lambda: win.paused_banner.isHidden())
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    win.connect_board()
+    wait_until(lambda: win.info is not None)
+    settle(win)
+    assert win.paused_banner.isHidden()
+
+
+def test_a_lost_pause_reply_still_shows_the_banner(gui):
+    win, fake, prompts = gui()
+    fake.lose_running_reply = True
+    win.dashboard.pause()
+    settle(win)
+    wait_until(lambda: prompts.errors)
+    wait_until(lambda: not win.paused_banner.isHidden())
+    assert "may" in win.paused_banner.text.text()
+
+
 def test_disconnecting_with_a_paused_script_warns(gui):
     win, _, prompts = gui()
     win.dashboard.pause()
@@ -689,7 +935,7 @@ def test_disconnecting_with_a_paused_script_warns(gui):
     wait_until(lambda: win.script_paused)
     win.disconnect_board()
     wait_until(lambda: win.board is None)
-    assert prompts.infos[-1][0] == "The script is still paused"
+    assert prompts.infos[-1][0] == "The script may still be paused"
     assert win.paused_banner.isHidden()
 
 
@@ -704,7 +950,7 @@ def test_nothing_can_be_queued_on_a_board_that_is_gone(gui):
 def test_board_lost_during_the_review_dialog_writes_nothing_and_says_so(gui):
     win, fake, prompts = gui()
 
-    def unplug_during_dialog(rows, warnings):
+    def unplug_during_dialog(rows, warnings, target=""):
         fake.unplugged = True
         wait_until(lambda: win.board is None)
         return True
@@ -743,6 +989,42 @@ def test_csv_recording_uses_the_terminal_columns(gui, tmp_path):
     lines = (tmp_path / "run.csv").read_text().splitlines()
     assert lines[0].split(",") == ["t", "erpm", "duty", "motor_a", "input_a", "bus_v", "fet_c", "motor_c", "fault"]
     assert len(lines) >= 3
+    assert lines[1].split(",")[5] == "48.0"
+    assert lines[1].split(",")[8] == "FAULT_CODE_NONE"
+
+
+def test_recording_stops_and_closes_on_disconnect(gui, tmp_path):
+    win, _, prompts = gui()
+    prompts.csv_path = str(tmp_path / "run.csv")
+    win.dashboard.toggle_recording()
+    handle = win.dashboard._csv_file
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    assert handle.closed
+    assert win.dashboard._csv is None
+
+
+def test_a_full_disk_stops_recording_and_says_so(gui, tmp_path):
+    win, _, prompts = gui()
+    prompts.csv_path = "/dev/full"
+    win.dashboard.toggle_recording()
+    wait_until(lambda: any(title == "Recording stopped" for title, _ in prompts.errors))
+    assert win.dashboard._csv is None
+    assert win.dashboard.record_button.text() == "Record CSV…"
+
+
+def test_failing_to_close_the_port_still_disconnects(gui):
+    win, fake, prompts = gui()
+    board_link_close = fake.close
+
+    def raising_close():
+        board_link_close()
+        raise OSError("device vanished")
+
+    fake.close = raising_close
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    assert win.connect_button.text() == "Connect"
 
 
 def test_unwritable_csv_path_is_reported(gui, tmp_path):
@@ -750,6 +1032,258 @@ def test_unwritable_csv_path_is_reported(gui, tmp_path):
     prompts.csv_path = str(tmp_path / "missing" / "run.csv")
     win.dashboard.toggle_recording()
     assert prompts.errors[-1][0] == "Could not record"
+
+
+# ---------------------------------------------------------------------- day and night
+def _luminance(hex_color):
+    channels = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(a, b):
+    high, low = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+@pytest.mark.parametrize("palette", [theme.DAY, theme.NIGHT], ids=["day", "night"])
+@pytest.mark.parametrize("text, background", [
+    ("ink", "surface"), ("ink", "background"), ("ink", "surface_alt"), ("ink", "changed"), ("ink", "invalid"),
+    ("ink", "locked"), ("muted", "surface"), ("muted", "background"), ("muted", "surface_alt"),
+    ("on_primary", "primary"), ("accent_ink", "accent_bg"), ("good", "surface"), ("critical", "surface"),
+    ("warning_ink", "warning_bg"), ("demo_ink", "demo_bg"), ("ink", "info_bg"),
+])
+def test_text_is_readable_in_both_themes(palette, text, background):
+    ratio = _contrast(getattr(palette, text), getattr(palette, background))
+    assert ratio >= 4.5, f"{palette.name}: {text} on {background} is only {ratio:.2f}:1"
+
+
+@pytest.mark.parametrize("palette", [theme.DAY, theme.NIGHT], ids=["day", "night"])
+def test_the_chart_line_is_visible_in_both_themes(palette):
+    assert _contrast(palette.brand, palette.surface) >= 3
+
+
+def test_every_stylesheet_image_exists():
+    import re
+
+    for palette in (theme.DAY, theme.NIGHT):
+        for path in re.findall(r'url\("([^"]+)"\)', theme.qss(palette)):
+            assert Path(path).is_file(), path
+
+
+def test_the_theme_toggle_switches_and_is_remembered(gui, tmp_path):
+    win, _, _ = gui()
+    win.set_theme("day")
+    assert theme.current is theme.DAY
+    assert "Day" in win.theme_button.text()
+    win.toggle_theme()
+    assert theme.current is theme.NIGHT
+    assert "Night" in win.theme_button.text()
+    assert QApplication.instance().styleSheet() == theme.qss(theme.NIGHT)
+    win.settings.sync()
+    assert "theme=night" in (tmp_path / "settings.ini").read_text()
+    other = MainWindow(ports=lambda: [], backup_dir=tmp_path, prompts=FakePrompts(),
+                       settings_path=tmp_path / "settings.ini", repo_dir=tmp_path / "no-repo")
+    assert other.theme_name == "night"
+    other.close()
+    win.set_theme("day")
+
+
+def test_an_edited_dropdown_row_is_highlighted_all_the_way_across(gui):
+    win, _, _ = gui()
+    win.set_theme("day")
+    table = win.config_page.motor
+    table.set_value("motor_type", "MOTOR_TYPE_FOC")
+    assert table.item(table.rows["motor_type"], VALUE).background().color().name().upper() == theme.DAY.changed
+    assert table.text_of("motor_type") == "MOTOR_TYPE_FOC"
+
+
+def test_switching_theme_keeps_edits_and_recolours_them(gui):
+    win, _, _ = gui()
+    win.set_theme("day")
+    table = win.config_page.motor
+    table.set_value("l_temp_fet_start", "84")
+    row = table.rows["l_temp_fet_start"]
+    assert table.item(row, VALUE).background().color().name().upper() == theme.DAY.changed
+    win.set_theme("night")
+    assert table.staged == {"l_temp_fet_start": "84"}
+    assert table.item(row, VALUE).background().color().name().upper() == theme.NIGHT.changed
+    win.set_theme("day")
+
+
+# ---------------------------------------------------------------------- updates
+@pytest.fixture
+def source_folder(tmp_path, monkeypatch):
+    """(checkout, other clone): a throwaway project with a local remote. Never this repo, never the network."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+    def git(cwd, *args):
+        subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
+
+    bare, seed, work, other = (tmp_path / n for n in ("remote.git", "seed", "work", "other"))
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(seed)], check=True)
+    (seed / "src" / "sky_programmer").mkdir(parents=True)
+    (seed / "src" / "sky_programmer" / "__init__.py").write_text("")
+    (seed / "f.txt").write_text("one\n")
+    for cfg in (("user.email", "t@t"), ("user.name", "t")):
+        git(seed, "config", *cfg)
+    git(seed, "add", ".")
+    git(seed, "commit", "-qm", "one")
+    git(seed, "remote", "add", "origin", str(bare))
+    git(seed, "push", "-q", "-u", "origin", "main")
+    for clone in (work, other):
+        subprocess.run(["git", "clone", "-q", str(bare), str(clone)], check=True)
+        for cfg in (("user.email", "t@t"), ("user.name", "t")):
+            git(clone, "config", *cfg)
+    (other / "new.txt").write_text("new\n")
+    git(other, "add", ".")
+    git(other, "commit", "-qm", "from github")
+    git(other, "push", "-q")
+    return work
+
+
+def _updates(win, folder):
+    page = win.updates_page
+    page.set_repo(folder)
+    return page
+
+
+def test_updates_is_open_with_no_board_and_board_pages_are_not(gui):
+    win, _, _ = gui(connect=False)
+    assert win.nav.item(4).flags() & Qt.ItemFlag.ItemIsEnabled
+    assert not win.nav.item(0).flags() & Qt.ItemFlag.ItemIsEnabled
+    win.nav.setCurrentRow(4)
+    assert win.stack.currentWidget() is win.updates_page
+
+
+def test_status_shows_the_folder(gui, source_folder):
+    win, _, _ = gui(connect=False)
+    page = _updates(win, source_folder)
+    page.refresh()
+    wait_until(lambda: not page.busy)
+    assert "branch     main @" in page.output.toPlainText()
+
+
+def test_pull_updates_the_folder_and_says_this_copy_is_not_changed(gui, source_folder):
+    win, _, prompts = gui(connect=False)
+    page = _updates(win, source_folder)
+    page.pull()
+    wait_until(lambda: not page.busy)
+    assert (source_folder / "new.txt").exists()
+    assert prompts.infos[-1][0] == "Folder updated"
+    assert not win.code_stale
+
+
+def test_when_the_app_runs_from_the_folder_a_pull_forces_a_restart_before_connecting(gui, source_folder, monkeypatch):
+    monkeypatch.setattr("sky_programmer.gitops.running_from", lambda repo: True)
+    win, fake, prompts = gui(connect=False)
+    page = _updates(win, source_folder)
+    page.pull()
+    wait_until(lambda: not page.busy)
+    assert win.code_stale
+    assert not win.stale_banner.isHidden()
+    win.connect_board()
+    assert win.board is None
+    assert prompts.infos[-1][0] == "Restart first"
+    assert fake.commands == []
+
+
+def test_pull_and_reset_are_refused_while_a_board_is_connected(gui, source_folder):
+    win, _, prompts = gui()
+    page = _updates(win, source_folder)
+    win._sync()
+    assert not page.pull_button.isEnabled()
+    assert not page.reset_button.isEnabled()
+    assert page.status_button.isEnabled()
+    page.pull()
+    page.reset_folder()
+    assert prompts.infos[-1][0] == "Disconnect first"
+    assert not page.busy
+    assert not (source_folder / "new.txt").exists()
+
+
+def test_reset_is_cancelled_unless_confirmed(gui, source_folder):
+    win, _, prompts = gui(connect=False)
+    page = _updates(win, source_folder)
+    (source_folder / "f.txt").write_text("my work\n")
+    prompts.reset_answer = False
+    page.reset_folder()
+    wait_until(lambda: prompts.resets and not page.busy)
+    assert any("f.txt" in line for line in prompts.resets[0]["lost_files"])
+    assert (source_folder / "f.txt").read_text() == "my work\n"
+
+
+def test_reset_makes_the_folder_match_github(gui, source_folder):
+    win, _, prompts = gui(connect=False)
+    page = _updates(win, source_folder)
+    (source_folder / "f.txt").write_text("my work\n")
+    page.reset_folder()
+    wait_until(lambda: prompts.resets and not page.busy)
+    assert (source_folder / "f.txt").read_text() == "one\n"
+    assert (source_folder / "new.txt").exists()
+    assert "To go back" in page.output.toPlainText()
+
+
+def test_connecting_during_the_reset_dialog_stops_the_reset(gui, source_folder):
+    win, _, prompts = gui(connect=False)
+    page = _updates(win, source_folder)
+    (source_folder / "f.txt").write_text("my work\n")
+
+    def connect_during_dialog(preview):
+        win.connect_board()
+        wait_until(lambda: win.info is not None)
+        return True
+
+    prompts.confirm_reset = connect_during_dialog
+    page.reset_folder()
+    wait_until(lambda: any(title == "Disconnect first" for title, _ in prompts.infos))
+    assert (source_folder / "f.txt").read_text() == "my work\n"
+
+
+def test_disconnecting_never_touches_the_source_folder(gui, source_folder):
+    win, _, prompts = gui()
+    page = _updates(win, source_folder)
+    (source_folder / "f.txt").write_text("my work\n")
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    assert prompts.resets == []
+    assert not page.busy
+    assert (source_folder / "f.txt").read_text() == "my work\n"
+
+
+def test_a_folder_that_is_not_this_project_cannot_be_chosen(gui, tmp_path):
+    win, _, prompts = gui(connect=False)
+    other = tmp_path / "someone-elses"
+    subprocess.run(["git", "init", "-q", str(other)], check=True)
+    prompts.folder = str(other)
+    win.updates_page.choose_folder()
+    assert prompts.errors[-1][0] == "Not this project"
+    assert not win.updates_page.pull_button.isEnabled()
+
+
+def test_closing_is_refused_during_an_update(gui, source_folder):
+    win, _, prompts = gui(connect=False)
+    page = _updates(win, source_folder)
+    gate = threading.Event()
+    page._start(lambda: gate.wait(10), lambda _: None)
+    assert win.close() is False
+    assert prompts.infos[-1][0] == "Please wait"
+    gate.set()
+    wait_until(lambda: not page.busy)
+
+
+def test_git_failing_to_run_is_shown_on_the_page(gui, source_folder, monkeypatch):
+    win, _, _ = gui(connect=False)
+    page = _updates(win, source_folder)
+
+    def broken(repo):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr("sky_programmer.gitops.pull", broken)
+    page.pull()
+    wait_until(lambda: not page.busy)
+    assert "Could not run git" in page.output.toPlainText()
 
 
 # ---------------------------------------------------------------------- safety boundaries in the source
@@ -796,6 +1330,27 @@ def test_typed_confirm_needs_exactly_yes():
     assert not d.go.isDefault()
 
 
+def test_typed_confirm_enter_only_works_once_the_word_is_right():
+    QApplication.instance() or QApplication([])
+    d = TypedConfirm(None, "t", "", "prompt", "Write")
+    d.answer.setText("nope")
+    d.answer.returnPressed.emit()
+    assert d.result() != d.DialogCode.Accepted
+    d.answer.setText("YES")
+    d.answer.returnPressed.emit()
+    assert d.result() == d.DialogCode.Accepted
+    d2 = TypedConfirm(None, "t", "", "prompt", "Reset", word="RESET")
+    d2.answer.setText("YES")
+    assert not d2.go.isEnabled()
+    d2.answer.setText("RESET")
+    assert d2.go.isEnabled()
+
+
+def test_dead_board_wording_reads_properly():
+    out = humanize("Reconnect and run `sky status`, then `sky diff <backup>`.")
+    assert out == "Reconnect, then Compare on the Backups page."
+
+
 @pytest.mark.parametrize("text, expect", [
     ("Run `sky backup` first", "Back up now"),
     ("Usually a running script: run `sky stop` first.", "Pause script"),
@@ -831,7 +1386,8 @@ def test_launcher_is_written_for_this_user_only(tmp_path, monkeypatch):
 
 def test_simulated_backups_cannot_reach_the_real_folder(tmp_path):
     QApplication.instance() or QApplication([])
-    win = MainWindow(backup_dir=tmp_path, demo=DemoBoard(), prompts=FakePrompts())
+    win = MainWindow(backup_dir=tmp_path, demo=DemoBoard(), prompts=FakePrompts(),
+                     settings_path=tmp_path / "settings.ini", repo_dir=tmp_path / "no-repo")
     win.show()
     wait_until(lambda: win.info is not None)
     assert win.backup_dir == str(tmp_path)

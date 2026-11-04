@@ -21,8 +21,8 @@ class ConsolePage(QWidget):
         super().__init__()
         self.win = win
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 14, 16, 14)
-        root.setSpacing(10)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(12)
         title = QLabel("Console")
         title.setObjectName("PageTitle")
         root.addWidget(title)
@@ -76,20 +76,26 @@ class ConsolePage(QWidget):
         self.append(f"{prefix}: {self.win.words(error)}")
 
     def run_terminal(self) -> None:
+        board = self.win.board
+        if board is None:
+            return
         command = self.term_choice.currentText()
-        self.append(f"term> {command}")
-        self.win.board.submit(lambda prog: prog.terminal(command), self._show_reply, self._show_error, exclusive=True)
+        if board.submit(lambda prog: prog.terminal(command), self._show_reply, self._show_error, exclusive=True):
+            self.append(f"term> {command}")
 
     def send_repl(self) -> None:
         text = self.repl_input.text()
-        if not text.strip() or self.win.board is None or self.win.board.busy:
+        board = self.win.board
+        if not text.strip() or board is None or board.busy:
             return
         if self.win.script_paused and not text.strip().startswith(":") and not self.win.prompts.confirm_repl_resume():
             self.append("Not sent: the script stays paused.")
             return
-        self.append(f"sky> {text}")
-        self.repl_input.clear()
-        self.win.board.submit(lambda prog: prog.repl(text), self._show_reply, self._show_error, exclusive=True)
+        if board.submit(lambda prog: prog.repl(text), self._show_reply, self._show_error, exclusive=True):
+            self.append(f"sky> {text}")
+            self.repl_input.clear()
+        else:
+            self.append("Not sent: the board has disconnected.")
 
     def reset(self) -> None:
         pass  # the log stays readable after a disconnect

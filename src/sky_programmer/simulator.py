@@ -9,7 +9,9 @@ These firmware behaviours are modelled on purpose, because each one once let a t
 - SET_RUNNING 0 answers "yes" whenever a script exists, "no" at once if none does, "no" after 2 s if the pause fails;
 - SET_RUNNING 1 answers "no" with no stored script;
 - only real terminal commands answer, and only allowed meta commands print;
-- a bad BLDC switching frequency hangs the next boot, so USB never comes back.
+- a bad BLDC switching frequency hangs the next boot, so USB never comes back;
+- a pause that times out stays pending, so the script stops later even though the answer was "no";
+- a REPL expression that can't pause first prints "Could not pause" and doesn't resume the script.
 """
 from __future__ import annotations
 
@@ -90,8 +92,11 @@ class FakeVesc:
         self.script_present = knobs.pop("script_present", True)
         self.script_running = self.script_present
         self.pause_fails = knobs.pop("pause_fails", False)
+        self.lose_running_reply = knobs.pop("lose_running_reply", False)  # SET_RUNNING acts, but the reply is lost
+        self.repl_cannot_pause = knobs.pop("repl_cannot_pause", False)
         self.linked_limit = knobs.pop("linked_limit", False)  # firmware's foc_sl_erpm_start <= 0.9 * foc_sl_erpm
         self.boot_hung = False
+        self.pause_pending = False
         self.write_mode = knobs.pop("write_mode", "ok")  # ok, drop_ack, ignored, dead, reject
         self.clamp = knobs.pop("clamp", {})  # field -> value the firmware stores instead
         self.side_effect = knobs.pop("side_effect", {})  # field -> value it wrongly changes
@@ -166,6 +171,9 @@ class FakeVesc:
                     self._print(p.COMM_PRINT, text)
         elif cmd == p.COMM_LISP_REPL_CMD:
             text = pl[1:].rstrip(b"\0").decode()
+            if self.repl_cannot_pause and not text.startswith(":"):
+                self._print(p.COMM_LISP_PRINT, "Could not pause")
+                return
             if not text.startswith(":"):
                 self.script_running = self.script_present  # firmware: evaluation always continues the evaluator
             self._print(p.COMM_LISP_PRINT, "> " + text)
@@ -175,16 +183,19 @@ class FakeVesc:
     def _set_running(self, run):
         if run:
             self.script_running = self.script_present
-            self._reply(bytes([p.COMM_LISP_SET_RUNNING, 1 if self.script_present else 0]))
+            if not self.lose_running_reply:
+                self._reply(bytes([p.COMM_LISP_SET_RUNNING, 1 if self.script_present else 0]))
             return
         if self.script_present and self.pause_fails:
             self.clock.sleep(2.0)
+            self.pause_pending = True  # lbm_pause_eval isn't cancelled by the timeout
             self._reply(bytes([p.COMM_LISP_SET_RUNNING, 0]))
             return
         if self.spin_after_pause:
             self.erpm = self.spin_after_pause
         self.script_running = False
-        self._reply(bytes([p.COMM_LISP_SET_RUNNING, 1 if self.script_present else 0]))
+        if not self.lose_running_reply:
+            self._reply(bytes([p.COMM_LISP_SET_RUNNING, 1 if self.script_present else 0]))
 
     def power_cycle(self):
         """Reboot from the stored config. A bad switching frequency in BLDC hangs in do_dc_cal, before USB."""

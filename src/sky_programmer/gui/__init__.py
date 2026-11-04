@@ -4,10 +4,8 @@ from __future__ import annotations
 
 def main(argv=None) -> int:
     try:
-        import PySide6  # noqa: F401
-    except ImportError:
-        print("The desktop app needs PySide6. Install it with: pipx install --force '.[gui]'")
+        from .app import run
+    except ImportError as e:  # PySide6 itself, or a system library it needs
+        print(f"The desktop app can't start: {e}\nInstall it with: pipx install --force --editable '.[gui]'")
         return 1
-    from .app import run
-
     return run(argv)

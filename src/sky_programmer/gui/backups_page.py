@@ -23,8 +23,8 @@ class BackupsPage(QWidget):
         self.win = win
         self.paths = []
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 14, 16, 14)
-        root.setSpacing(10)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(12)
         bar = QHBoxLayout()
         title = QLabel("Backups")
         title.setObjectName("PageTitle")
@@ -51,6 +51,8 @@ class BackupsPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setDefaultSectionSize(38)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.itemSelectionChanged.connect(self._sync_buttons)
         root.addWidget(self.table, 1)
@@ -88,7 +90,8 @@ class BackupsPage(QWidget):
 
     # ---------------------------------------------------------------- board actions
     def backup_now(self) -> None:
-        if self.win.board is None:
+        board = self.win.board
+        if board is None:
             return
 
         def done(path):
@@ -96,7 +99,18 @@ class BackupsPage(QWidget):
             self.win.set_baseline_present()
             self.refresh()
 
-        self.win.board.submit(lambda prog: prog.save_backup(), done, self.win.report, exclusive=True)
+        def checked(drift):
+            """A new backup becomes the baseline, so it must not quietly accept a script's temporary changes."""
+            if drift:
+                lay = self.win.layout
+                rows = [(k, *config.show_pair(lay, MC_ROOT, k, a, b)) for k, (a, b) in sorted(drift.items())]
+                if not self.win.prompts.confirm_new_baseline(rows):
+                    self.win.log("Cancelled. No backup was saved.")
+                    return
+            if not board.submit(lambda prog: prog.save_backup(), done, self.win.report, exclusive=True):
+                self.win.prompts.error("Not saved", "The board disconnected, so no backup was saved.")
+
+        board.submit(lambda prog: prog.baseline_drift(), checked, self.win.report, exclusive=True)
 
     def compare(self) -> None:
         doc = self._selected_doc()

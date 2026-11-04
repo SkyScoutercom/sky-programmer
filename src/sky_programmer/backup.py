@@ -13,6 +13,10 @@ from .errors import SafetyRefusal
 
 FORMAT = 1
 
+# What counts as "this board's settings" for the drift check. A pre-write backup doesn't: it records whatever was live
+# just before a write, including a script's temporary changes if the write was a restore, or never finished.
+BASELINE_REASONS = ("manual", "post-write")
+
 
 def default_dir() -> Path:
     base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
@@ -57,10 +61,15 @@ def save(directory, ident: dict, reason: str, mc_blob: bytes, app_blob: bytes, m
 def load(path) -> dict:
     with open(path) as f:
         doc = json.load(f)
-    if doc.get("format") != FORMAT or doc.get("app") != "SKY programmer":
+    if not isinstance(doc, dict) or doc.get("format") != FORMAT or doc.get("app") != "SKY programmer":
         raise SafetyRefusal(f"{path} is not a SKY programmer backup.")
-    doc["mc_blob"] = _unpack(doc["mcconf"], "motor config", path)
-    doc["app_blob"] = _unpack(doc["appconf"], "app config", path)
+    try:
+        doc["mc_blob"] = _unpack(doc["mcconf"], "motor config", path)
+        doc["app_blob"] = _unpack(doc["appconf"], "app config", path)
+        if not all(isinstance(doc[k], str) for k in ("created", "reason", "hw", "fw", "uuid")):
+            raise ValueError("a field has the wrong type")
+    except (KeyError, TypeError, ValueError, AttributeError) as e:
+        raise SafetyRefusal(f"{path} is damaged, so it can't be used: {e}") from e
     doc["path"] = str(path)
     return doc
 
@@ -70,13 +79,13 @@ def list_backups(directory, uuid: str) -> list[Path]:
     return sorted(folder.glob("*.json")) if folder.is_dir() else []
 
 
-def latest(directory, uuid: str, fw: str):
-    """Newest readable backup of this board on this firmware, or None."""
+def latest(directory, uuid: str, fw: str, reasons=BASELINE_REASONS):
+    """Newest readable baseline of this board on this firmware, or None."""
     for path in reversed(list_backups(directory, uuid)):
         try:
             doc = load(path)
-        except (OSError, ValueError, KeyError, SafetyRefusal):
+        except (OSError, ValueError, SafetyRefusal):
             continue
-        if doc["fw"] == fw:
+        if doc["fw"] == fw and doc["reason"] in reasons:
             return doc
     return None

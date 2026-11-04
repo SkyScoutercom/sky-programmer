@@ -42,6 +42,7 @@ RISKY_FIELDS = {
     "l_max_erpm_fbrake_cc": "shorts the phases, with no current limit, at speed",
     "l_temp_motor_start": "motor over-temperature protection",
     "l_temp_motor_end": "motor over-temperature protection",
+    "foc_phase_filter_disable_fault": "turns off the phase-filter fault protection",
 }
 
 # The firmware's own limits sit far above these boards' ratings (300 A and 150 V on the 110100),
@@ -205,6 +206,14 @@ def show(layout: Layout, root: str, field: str, val) -> str:
     if names and str(val) in names:
         return names[str(val)]
     return f"{val:.6g}" if isinstance(val, float) else str(val)
+
+
+def show_pair(layout: Layout, root: str, field: str, a, b) -> tuple:
+    """Two values to show side by side, with enough digits that a real change never looks like no change."""
+    left, right = show(layout, root, field, a), show(layout, root, field, b)
+    if left == right and isinstance(a, float) and isinstance(b, float):
+        return f"{a:.10g}", f"{b:.10g}"
+    return left, right
 
 
 def differences(before: dict, after: dict, layout: Layout | None = None, root: str = MC_ROOT) -> dict:

@@ -104,10 +104,23 @@ class Programmer:
         if v["fault_code"]:
             self.say(f"Note: the board reports fault {self.fault_name(v['fault_code'])}.")
 
+    def baseline(self):
+        """The backup that defines this board's settings for the drift check, or None."""
+        ident = self.identify()
+        return backup.latest(self.backup_dir, ident["uuid"], ident["fw"])
+
+    def baseline_drift(self) -> dict:
+        """{field: (baseline, live)}. A new manual backup would make these the board's settings."""
+        base = self.baseline()
+        if base is None:
+            return {}
+        lay = self.layout()
+        return config.differences(config.decode(base["mc_blob"], lay, MC_ROOT), self.read_conf(MC_ROOT), lay)
+
     def _check_baseline(self, before: dict) -> None:
         """A write stores the whole live config, including temporary changes made by a script."""
-        ident, lay = self.identify(), self.layout()
-        base = backup.latest(self.backup_dir, ident["uuid"], ident["fw"])
+        lay = self.layout()
+        base = self.baseline()
         if base is None:
             raise SafetyRefusal(
                 "this board has no SKY backup yet, so temporary changes made by a script can't be told apart from "
@@ -209,6 +222,7 @@ class Programmer:
         self._pause_script()
         try:
             self.require_idle(plan.before)
+            self._check_supply_stays_in_range(plan.after)  # again: time may have passed since planning
             if self.read_mc_stable() != plan.current:
                 raise SafetyRefusal("the motor config changed since this write was planned.")
             app_blob = self._read_blob(p.COMM_GET_APPCONF)
@@ -219,7 +233,10 @@ class Programmer:
         self.say(f"Backup saved: {saved}")
 
         acked = self._send_config(plan.target)
-        got = self._read_back()
+        try:
+            got = self._read_back()
+        except CommsError as e:
+            raise CommsError(f"{e} Backup: {saved}") from e
         try:
             after = config.decode(got, lay, MC_ROOT)
         except SafetyRefusal as e:
@@ -244,13 +261,17 @@ class Programmer:
     def _pause_script(self) -> bool:
         """True if a script was paused, False if none exists. Refuses if one may still be running."""
         t0 = self.link.clock()
+        was_paused = self.script_paused
+        # Assume paused until a reply proves otherwise. The reply can be lost after the firmware acted, and a pause that
+        # times out isn't cancelled (pause_eval in lispif.c), so the script can still pause after answering "no".
+        self.script_paused = True
         reply = self.link.request(bytes([p.COMM_LISP_SET_RUNNING, 0]), timeout=PAUSE_TIMEOUT_S)
         if len(reply) > 1 and reply[1] == 1:
-            self.script_paused = True
             return True
         if self.link.clock() - t0 >= PAUSE_FAILED_AFTER_S:
             raise SafetyRefusal("the script did not pause within 2 s, so it may still be running. "
                                 "Nothing was written. Power-cycle with the engine stopped and try again.")
+        self.script_paused = was_paused
         return False
 
     def _send_config(self, blob: bytes) -> bool:
@@ -337,6 +358,14 @@ class Programmer:
     def repl(self, text: str, *, allow_motor=False, wait: float = 0.6) -> list[str]:
         self.layout()  # the word lists are only reviewed for supported firmware
         self.link.send(bytes([p.COMM_LISP_REPL_CMD]) + text.encode() + b"\0", repl_allow_motor=allow_motor)
-        if not text.strip().startswith(":"):
-            self.script_paused = False  # the firmware resumes the evaluator for any expression
-        return self.link.collect_prints(wait)
+        replies = self.link.collect_prints(wait)
+        # The firmware resumes the evaluator for any expression it accepts, even one that fails to parse. It does not
+        # if it couldn't pause first, or if it ignored the line (within 0.5 s of the last), which gives no reply.
+        resumed = replies and not any("Could not pause" in line for line in replies)
+        if resumed and not text.strip().startswith(":"):
+            self.script_paused = False
+        return replies
+
+    def forget_pause(self) -> None:
+        """The operator says the board was power-cycled, which restarts the script. The board can't confirm it."""
+        self.script_paused = False
