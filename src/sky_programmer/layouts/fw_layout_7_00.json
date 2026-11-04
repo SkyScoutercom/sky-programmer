@@ -1,0 +1,2862 @@
+{
+ "appconf_ops": [
+  [
+   "sig",
+   null,
+   null
+  ],
+  [
+   "u8",
+   "controller_id",
+   null
+  ],
+  [
+   "u32",
+   "timeout_msec",
+   null
+  ],
+  [
+   "f32auto",
+   "timeout_brake_current",
+   null
+  ],
+  [
+   "u16",
+   "can_status_rate_1",
+   null
+  ],
+  [
+   "u16",
+   "can_status_rate_2",
+   null
+  ],
+  [
+   "u8",
+   "can_status_msgs_r1",
+   null
+  ],
+  [
+   "u8",
+   "can_status_msgs_r2",
+   null
+  ],
+  [
+   "u8",
+   "can_baud_rate",
+   null
+  ],
+  [
+   "u8",
+   "pairing_done",
+   null
+  ],
+  [
+   "u8",
+   "permanent_uart_enabled",
+   null
+  ],
+  [
+   "u8",
+   "shutdown_mode",
+   null
+  ],
+  [
+   "u8",
+   "can_mode",
+   null
+  ],
+  [
+   "u8",
+   "uavcan_esc_index",
+   null
+  ],
+  [
+   "u8",
+   "uavcan_raw_mode",
+   null
+  ],
+  [
+   "f32auto",
+   "uavcan_raw_rpm_max",
+   null
+  ],
+  [
+   "u8",
+   "uavcan_status_current_mode",
+   null
+  ],
+  [
+   "u8",
+   "servo_out_enable",
+   null
+  ],
+  [
+   "u8",
+   "kill_sw_mode",
+   null
+  ],
+  [
+   "u8",
+   "app_to_use",
+   null
+  ],
+  [
+   "u8",
+   "app_ppm_conf.ctrl_type",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.pid_max_erpm",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.hyst",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.pulse_start",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.pulse_end",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.pulse_center",
+   null
+  ],
+  [
+   "u8",
+   "app_ppm_conf.median_filter",
+   null
+  ],
+  [
+   "u8",
+   "app_ppm_conf.safe_start",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.throttle_exp",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.throttle_exp_brake",
+   null
+  ],
+  [
+   "u8",
+   "app_ppm_conf.throttle_exp_mode",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.ramp_time_pos",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.ramp_time_neg",
+   null
+  ],
+  [
+   "u8",
+   "app_ppm_conf.multi_esc",
+   null
+  ],
+  [
+   "u8",
+   "app_ppm_conf.tc",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.tc_max_diff",
+   null
+  ],
+  [
+   "f16",
+   "app_ppm_conf.max_erpm_for_dir",
+   1.0
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.smart_rev_max_duty",
+   null
+  ],
+  [
+   "f32auto",
+   "app_ppm_conf.smart_rev_ramp_time",
+   null
+  ],
+  [
+   "u8",
+   "app_adc_conf.ctrl_type",
+   null
+  ],
+  [
+   "f32auto",
+   "app_adc_conf.hyst",
+   null
+  ],
+  [
+   "f16",
+   "app_adc_conf.voltage_start",
+   1000.0
+  ],
+  [
+   "f16",
+   "app_adc_conf.voltage_end",
+   1000.0
+  ],
+  [
+   "f16",
+   "app_adc_conf.voltage_min",
+   1000.0
+  ],
+  [
+   "f16",
+   "app_adc_conf.voltage_max",
+   1000.0
+  ],
+  [
+   "f16",
+   "app_adc_conf.voltage_center",
+   1000.0
+  ],
+  [
+   "f16",
+   "app_adc_conf.voltage2_start",
+   1000.0
+  ],
+  [
+   "f16",
+   "app_adc_conf.voltage2_end",
+   1000.0
+  ],
+  [
+   "u8",
+   "app_adc_conf.use_filter",
+   null
+  ],
+  [
+   "u8",
+   "app_adc_conf.safe_start",
+   null
+  ],
+  [
+   "u8",
+   "app_adc_conf.buttons",
+   null
+  ],
+  [
+   "u8",
+   "app_adc_conf.voltage_inverted",
+   null
+  ],
+  [
+   "u8",
+   "app_adc_conf.voltage2_inverted",
+   null
+  ],
+  [
+   "f32auto",
+   "app_adc_conf.throttle_exp",
+   null
+  ],
+  [
+   "f32auto",
+   "app_adc_conf.throttle_exp_brake",
+   null
+  ],
+  [
+   "u8",
+   "app_adc_conf.throttle_exp_mode",
+   null
+  ],
+  [
+   "f32auto",
+   "app_adc_conf.ramp_time_pos",
+   null
+  ],
+  [
+   "f32auto",
+   "app_adc_conf.ramp_time_neg",
+   null
+  ],
+  [
+   "u8",
+   "app_adc_conf.multi_esc",
+   null
+  ],
+  [
+   "u8",
+   "app_adc_conf.tc",
+   null
+  ],
+  [
+   "f32auto",
+   "app_adc_conf.tc_max_diff",
+   null
+  ],
+  [
+   "u16",
+   "app_adc_conf.update_rate_hz",
+   null
+  ],
+  [
+   "u32",
+   "app_uart_baudrate",
+   null
+  ],
+  [
+   "u8",
+   "app_chuk_conf.ctrl_type",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.hyst",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.ramp_time_pos",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.ramp_time_neg",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.stick_erpm_per_s_in_cc",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.throttle_exp",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.throttle_exp_brake",
+   null
+  ],
+  [
+   "u8",
+   "app_chuk_conf.throttle_exp_mode",
+   null
+  ],
+  [
+   "u8",
+   "app_chuk_conf.multi_esc",
+   null
+  ],
+  [
+   "u8",
+   "app_chuk_conf.tc",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.tc_max_diff",
+   null
+  ],
+  [
+   "u8",
+   "app_chuk_conf.use_smart_rev",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.smart_rev_max_duty",
+   null
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.smart_rev_ramp_time",
+   null
+  ],
+  [
+   "f16",
+   "app_chuk_conf.coast_brake_level",
+   1000.0
+  ],
+  [
+   "f32auto",
+   "app_chuk_conf.coast_brake_ramp_time",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.speed",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.power",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.crc_type",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.retry_delay",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.retries",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.channel",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.address[0]",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.address[1]",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.address[2]",
+   null
+  ],
+  [
+   "u8",
+   "app_nrf_conf.send_crc_ack",
+   null
+  ],
+  [
+   "u8",
+   "app_pas_conf.ctrl_type",
+   null
+  ],
+  [
+   "u8",
+   "app_pas_conf.sensor_type",
+   null
+  ],
+  [
+   "f16",
+   "app_pas_conf.current_scaling",
+   1000.0
+  ],
+  [
+   "f16",
+   "app_pas_conf.pedal_rpm_start",
+   10.0
+  ],
+  [
+   "f16",
+   "app_pas_conf.pedal_rpm_end",
+   10.0
+  ],
+  [
+   "u8",
+   "app_pas_conf.invert_pedal_direction",
+   null
+  ],
+  [
+   "u16",
+   "app_pas_conf.magnets",
+   null
+  ],
+  [
+   "u8",
+   "app_pas_conf.use_filter",
+   null
+  ],
+  [
+   "f16",
+   "app_pas_conf.ramp_time_pos",
+   100.0
+  ],
+  [
+   "f16",
+   "app_pas_conf.ramp_time_neg",
+   100.0
+  ],
+  [
+   "u16",
+   "app_pas_conf.update_rate_hz",
+   null
+  ],
+  [
+   "u8",
+   "imu_conf.type",
+   null
+  ],
+  [
+   "u8",
+   "imu_conf.mode",
+   null
+  ],
+  [
+   "u8",
+   "imu_conf.filter",
+   null
+  ],
+  [
+   "f16",
+   "imu_conf.accel_lowpass_filter_x",
+   1.0
+  ],
+  [
+   "f16",
+   "imu_conf.accel_lowpass_filter_y",
+   1.0
+  ],
+  [
+   "f16",
+   "imu_conf.accel_lowpass_filter_z",
+   1.0
+  ],
+  [
+   "f16",
+   "imu_conf.gyro_lowpass_filter",
+   1.0
+  ],
+  [
+   "u16",
+   "imu_conf.sample_rate_hz",
+   null
+  ],
+  [
+   "u8",
+   "imu_conf.use_magnetometer",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.accel_confidence_decay",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.mahony_kp",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.mahony_ki",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.madgwick_beta",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.rot_roll",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.rot_pitch",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.rot_yaw",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.accel_offsets[0]",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.accel_offsets[1]",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.accel_offsets[2]",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.gyro_offsets[0]",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.gyro_offsets[1]",
+   null
+  ],
+  [
+   "f32auto",
+   "imu_conf.gyro_offsets[2]",
+   null
+  ]
+ ],
+ "branch": "release_7_00",
+ "enums": {
+  "AHRS_MODE": {
+   "0": "AHRS_MODE_MADGWICK",
+   "1": "AHRS_MODE_MAHONY",
+   "2": "AHRS_MODE_MADGWICK_FUSION"
+  },
+  "BATTERY_TYPE": {
+   "0": "BATTERY_TYPE_LIION_3_0__4_2",
+   "1": "BATTERY_TYPE_LIIRON_2_6__3_6",
+   "2": "BATTERY_TYPE_LEAD_ACID"
+  },
+  "BMS_FWD_CAN_MODE": {
+   "0": "BMS_FWD_CAN_MODE_DISABLED",
+   "1": "BMS_FWD_CAN_MODE_USB_ONLY",
+   "2": "BMS_FWD_CAN_MODE_ANY"
+  },
+  "BMS_TYPE": {
+   "0": "BMS_TYPE_NONE",
+   "1": "BMS_TYPE_VESC"
+  },
+  "CAN_BAUD": {
+   "0": "CAN_BAUD_125K",
+   "1": "CAN_BAUD_250K",
+   "2": "CAN_BAUD_500K",
+   "255": "CAN_BAUD_INVALID",
+   "3": "CAN_BAUD_1M",
+   "4": "CAN_BAUD_10K",
+   "5": "CAN_BAUD_20K",
+   "6": "CAN_BAUD_50K",
+   "7": "CAN_BAUD_75K",
+   "8": "CAN_BAUD_100K"
+  },
+  "CAN_MODE": {
+   "0": "CAN_MODE_VESC",
+   "1": "CAN_MODE_UAVCAN",
+   "2": "CAN_MODE_COMM_BRIDGE",
+   "3": "CAN_MODE_UNUSED",
+   "4": "CAN_MODE_VESC_UAVCAN"
+  },
+  "CAN_PACKET_ID": {
+   "0": "CAN_PACKET_SET_DUTY",
+   "1": "CAN_PACKET_SET_CURRENT",
+   "10": "CAN_PACKET_SET_CURRENT_REL",
+   "11": "CAN_PACKET_SET_CURRENT_BRAKE_REL",
+   "12": "CAN_PACKET_SET_CURRENT_HANDBRAKE",
+   "13": "CAN_PACKET_SET_CURRENT_HANDBRAKE_REL",
+   "14": "CAN_PACKET_STATUS_2",
+   "15": "CAN_PACKET_STATUS_3",
+   "16": "CAN_PACKET_STATUS_4",
+   "17": "CAN_PACKET_PING",
+   "18": "CAN_PACKET_PONG",
+   "19": "CAN_PACKET_DETECT_APPLY_ALL_FOC",
+   "2": "CAN_PACKET_SET_CURRENT_BRAKE",
+   "20": "CAN_PACKET_DETECT_APPLY_ALL_FOC_RES",
+   "21": "CAN_PACKET_CONF_CURRENT_LIMITS",
+   "22": "CAN_PACKET_CONF_STORE_CURRENT_LIMITS",
+   "23": "CAN_PACKET_CONF_CURRENT_LIMITS_IN",
+   "24": "CAN_PACKET_CONF_STORE_CURRENT_LIMITS_IN",
+   "25": "CAN_PACKET_CONF_FOC_ERPMS",
+   "26": "CAN_PACKET_CONF_STORE_FOC_ERPMS",
+   "27": "CAN_PACKET_STATUS_5",
+   "28": "CAN_PACKET_POLL_TS5700N8501_STATUS",
+   "29": "CAN_PACKET_CONF_BATTERY_CUT",
+   "3": "CAN_PACKET_SET_RPM",
+   "30": "CAN_PACKET_CONF_STORE_BATTERY_CUT",
+   "31": "CAN_PACKET_SHUTDOWN",
+   "32": "CAN_PACKET_IO_BOARD_ADC_1_TO_4",
+   "33": "CAN_PACKET_IO_BOARD_ADC_5_TO_8",
+   "34": "CAN_PACKET_IO_BOARD_ADC_9_TO_12",
+   "35": "CAN_PACKET_IO_BOARD_DIGITAL_IN",
+   "36": "CAN_PACKET_IO_BOARD_SET_OUTPUT_DIGITAL",
+   "37": "CAN_PACKET_IO_BOARD_SET_OUTPUT_PWM",
+   "38": "CAN_PACKET_BMS_V_TOT",
+   "39": "CAN_PACKET_BMS_I",
+   "4": "CAN_PACKET_SET_POS",
+   "40": "CAN_PACKET_BMS_AH_WH",
+   "41": "CAN_PACKET_BMS_V_CELL",
+   "42": "CAN_PACKET_BMS_BAL",
+   "4294967295": "CAN_PACKET_MAKE_ENUM_32_BITS",
+   "43": "CAN_PACKET_BMS_TEMPS",
+   "44": "CAN_PACKET_BMS_HUM",
+   "45": "CAN_PACKET_BMS_SOC_SOH_TEMP_STAT",
+   "46": "CAN_PACKET_PSW_STAT",
+   "47": "CAN_PACKET_PSW_SWITCH",
+   "48": "CAN_PACKET_BMS_HW_DATA_1",
+   "49": "CAN_PACKET_BMS_HW_DATA_2",
+   "5": "CAN_PACKET_FILL_RX_BUFFER",
+   "50": "CAN_PACKET_BMS_HW_DATA_3",
+   "51": "CAN_PACKET_BMS_HW_DATA_4",
+   "52": "CAN_PACKET_BMS_HW_DATA_5",
+   "53": "CAN_PACKET_BMS_AH_WH_CHG_TOTAL",
+   "54": "CAN_PACKET_BMS_AH_WH_DIS_TOTAL",
+   "55": "CAN_PACKET_UPDATE_PID_POS_OFFSET",
+   "56": "CAN_PACKET_POLL_ROTOR_POS",
+   "57": "CAN_PACKET_NOTIFY_BOOT",
+   "58": "CAN_PACKET_STATUS_6",
+   "59": "CAN_PACKET_GNSS_TIME",
+   "6": "CAN_PACKET_FILL_RX_BUFFER_LONG",
+   "60": "CAN_PACKET_GNSS_LAT",
+   "61": "CAN_PACKET_GNSS_LON",
+   "62": "CAN_PACKET_GNSS_ALT_SPEED_HDOP",
+   "63": "CAN_PACKET_UPDATE_BAUD",
+   "64": "CAN_PACKET_BMS_STATUS_1",
+   "65": "CAN_PACKET_BMS_STATUS_2",
+   "66": "CAN_PACKET_BMS_STATUS_3",
+   "67": "CAN_PACKET_BMS_STATUS_4",
+   "68": "CAN_PACKET_BMS_STATUS_5",
+   "7": "CAN_PACKET_PROCESS_RX_BUFFER",
+   "8": "CAN_PACKET_PROCESS_SHORT_BUFFER",
+   "9": "CAN_PACKET_STATUS"
+  },
+  "COMM_PACKET_ID": {
+   "0": "COMM_FW_VERSION",
+   "1": "COMM_JUMP_TO_BOOTLOADER",
+   "10": "COMM_SET_HANDBRAKE",
+   "100": "COMM_BMS_FORCE_BALANCE",
+   "101": "COMM_BMS_ZERO_CURRENT_OFFSET",
+   "102": "COMM_JUMP_TO_BOOTLOADER_HW",
+   "103": "COMM_ERASE_NEW_APP_HW",
+   "104": "COMM_WRITE_NEW_APP_DATA_HW",
+   "105": "COMM_ERASE_BOOTLOADER_HW",
+   "106": "COMM_JUMP_TO_BOOTLOADER_ALL_CAN_HW",
+   "107": "COMM_ERASE_NEW_APP_ALL_CAN_HW",
+   "108": "COMM_WRITE_NEW_APP_DATA_ALL_CAN_HW",
+   "109": "COMM_ERASE_BOOTLOADER_ALL_CAN_HW",
+   "11": "COMM_SET_DETECT",
+   "110": "COMM_SET_ODOMETER",
+   "111": "COMM_PSW_GET_STATUS",
+   "112": "COMM_PSW_SWITCH",
+   "113": "COMM_BMS_FWD_CAN_RX",
+   "114": "COMM_BMS_HW_DATA",
+   "115": "COMM_GET_BATTERY_CUT",
+   "116": "COMM_BM_HALT_REQ",
+   "117": "COMM_GET_QML_UI_HW",
+   "118": "COMM_GET_QML_UI_APP",
+   "119": "COMM_CUSTOM_HW_DATA",
+   "12": "COMM_SET_SERVO_POS",
+   "120": "COMM_QMLUI_ERASE",
+   "121": "COMM_QMLUI_WRITE",
+   "122": "COMM_IO_BOARD_GET_ALL",
+   "123": "COMM_IO_BOARD_SET_PWM",
+   "124": "COMM_IO_BOARD_SET_DIGITAL",
+   "125": "COMM_BM_MEM_WRITE",
+   "126": "COMM_BMS_BLNC_SELFTEST",
+   "127": "COMM_GET_EXT_HUM_TMP",
+   "128": "COMM_GET_STATS",
+   "129": "COMM_RESET_STATS",
+   "13": "COMM_SET_MCCONF",
+   "130": "COMM_LISP_READ_CODE",
+   "131": "COMM_LISP_WRITE_CODE",
+   "132": "COMM_LISP_ERASE_CODE",
+   "133": "COMM_LISP_SET_RUNNING",
+   "134": "COMM_LISP_GET_STATS",
+   "135": "COMM_LISP_PRINT",
+   "136": "COMM_BMS_SET_BATT_TYPE",
+   "137": "COMM_BMS_GET_BATT_TYPE",
+   "138": "COMM_LISP_REPL_CMD",
+   "139": "COMM_LISP_STREAM_CODE",
+   "14": "COMM_GET_MCCONF",
+   "140": "COMM_FILE_LIST",
+   "141": "COMM_FILE_READ",
+   "142": "COMM_FILE_WRITE",
+   "143": "COMM_FILE_MKDIR",
+   "144": "COMM_FILE_REMOVE",
+   "145": "COMM_LOG_START",
+   "146": "COMM_LOG_STOP",
+   "147": "COMM_LOG_CONFIG_FIELD",
+   "148": "COMM_LOG_DATA_F32",
+   "149": "COMM_SET_APPCONF_NO_STORE",
+   "15": "COMM_GET_MCCONF_DEFAULT",
+   "150": "COMM_GET_GNSS",
+   "151": "COMM_LOG_DATA_F64",
+   "152": "COMM_LISP_RMSG",
+   "156": "COMM_SHUTDOWN",
+   "157": "COMM_FW_INFO",
+   "158": "COMM_CAN_UPDATE_BAUD_ALL",
+   "159": "COMM_MOTOR_ESTOP",
+   "16": "COMM_SET_APPCONF",
+   "17": "COMM_GET_APPCONF",
+   "18": "COMM_GET_APPCONF_DEFAULT",
+   "19": "COMM_SAMPLE_PRINT",
+   "2": "COMM_ERASE_NEW_APP",
+   "20": "COMM_TERMINAL_CMD",
+   "21": "COMM_PRINT",
+   "22": "COMM_ROTOR_POSITION",
+   "23": "COMM_EXPERIMENT_SAMPLE",
+   "24": "COMM_DETECT_MOTOR_PARAM",
+   "25": "COMM_DETECT_MOTOR_R_L",
+   "26": "COMM_DETECT_MOTOR_FLUX_LINKAGE",
+   "27": "COMM_DETECT_ENCODER",
+   "28": "COMM_DETECT_HALL_FOC",
+   "29": "COMM_REBOOT",
+   "3": "COMM_WRITE_NEW_APP_DATA",
+   "30": "COMM_ALIVE",
+   "31": "COMM_GET_DECODED_PPM",
+   "32": "COMM_GET_DECODED_ADC",
+   "33": "COMM_GET_DECODED_CHUK",
+   "34": "COMM_FORWARD_CAN",
+   "35": "COMM_SET_CHUCK_DATA",
+   "36": "COMM_CUSTOM_APP_DATA",
+   "37": "COMM_NRF_START_PAIRING",
+   "38": "COMM_GPD_SET_FSW",
+   "39": "COMM_GPD_BUFFER_NOTIFY",
+   "4": "COMM_GET_VALUES",
+   "40": "COMM_GPD_BUFFER_SIZE_LEFT",
+   "41": "COMM_GPD_FILL_BUFFER",
+   "42": "COMM_GPD_OUTPUT_SAMPLE",
+   "43": "COMM_GPD_SET_MODE",
+   "44": "COMM_GPD_FILL_BUFFER_INT8",
+   "45": "COMM_GPD_FILL_BUFFER_INT16",
+   "46": "COMM_GPD_SET_BUFFER_INT_SCALE",
+   "47": "COMM_GET_VALUES_SETUP",
+   "48": "COMM_SET_MCCONF_TEMP",
+   "49": "COMM_SET_MCCONF_TEMP_SETUP",
+   "5": "COMM_SET_DUTY",
+   "50": "COMM_GET_VALUES_SELECTIVE",
+   "51": "COMM_GET_VALUES_SETUP_SELECTIVE",
+   "52": "COMM_EXT_NRF_PRESENT",
+   "53": "COMM_EXT_NRF_ESB_SET_CH_ADDR",
+   "54": "COMM_EXT_NRF_ESB_SEND_DATA",
+   "55": "COMM_EXT_NRF_ESB_RX_DATA",
+   "56": "COMM_EXT_NRF_SET_ENABLED",
+   "57": "COMM_DETECT_MOTOR_FLUX_LINKAGE_OPENLOOP",
+   "58": "COMM_DETECT_APPLY_ALL_FOC",
+   "59": "COMM_JUMP_TO_BOOTLOADER_ALL_CAN",
+   "6": "COMM_SET_CURRENT",
+   "60": "COMM_ERASE_NEW_APP_ALL_CAN",
+   "61": "COMM_WRITE_NEW_APP_DATA_ALL_CAN",
+   "62": "COMM_PING_CAN",
+   "63": "COMM_APP_DISABLE_OUTPUT",
+   "64": "COMM_TERMINAL_CMD_SYNC",
+   "65": "COMM_GET_IMU_DATA",
+   "66": "COMM_BM_CONNECT",
+   "67": "COMM_BM_ERASE_FLASH_ALL",
+   "68": "COMM_BM_WRITE_FLASH",
+   "69": "COMM_BM_REBOOT",
+   "7": "COMM_SET_CURRENT_BRAKE",
+   "70": "COMM_BM_DISCONNECT",
+   "71": "COMM_BM_MAP_PINS_DEFAULT",
+   "72": "COMM_BM_MAP_PINS_NRF5X",
+   "73": "COMM_ERASE_BOOTLOADER",
+   "74": "COMM_ERASE_BOOTLOADER_ALL_CAN",
+   "75": "COMM_PLOT_INIT",
+   "76": "COMM_PLOT_DATA",
+   "77": "COMM_PLOT_ADD_GRAPH",
+   "78": "COMM_PLOT_SET_GRAPH",
+   "79": "COMM_GET_DECODED_BALANCE",
+   "8": "COMM_SET_RPM",
+   "80": "COMM_BM_MEM_READ",
+   "81": "COMM_WRITE_NEW_APP_DATA_LZO",
+   "82": "COMM_WRITE_NEW_APP_DATA_ALL_CAN_LZO",
+   "83": "COMM_BM_WRITE_FLASH_LZO",
+   "84": "COMM_SET_CURRENT_REL",
+   "85": "COMM_CAN_FWD_FRAME",
+   "86": "COMM_SET_BATTERY_CUT",
+   "87": "COMM_SET_BLE_NAME",
+   "88": "COMM_SET_BLE_PIN",
+   "89": "COMM_SET_CAN_MODE",
+   "9": "COMM_SET_POS",
+   "90": "COMM_GET_IMU_CALIBRATION",
+   "91": "COMM_GET_MCCONF_TEMP",
+   "92": "COMM_GET_CUSTOM_CONFIG_XML",
+   "93": "COMM_GET_CUSTOM_CONFIG",
+   "94": "COMM_GET_CUSTOM_CONFIG_DEFAULT",
+   "95": "COMM_SET_CUSTOM_CONFIG",
+   "96": "COMM_BMS_GET_VALUES",
+   "97": "COMM_BMS_SET_CHARGE_ALLOWED",
+   "98": "COMM_BMS_SET_BALANCE_OVERRIDE",
+   "99": "COMM_BMS_RESET_COUNTERS"
+  },
+  "FOC_SPEED_SRC": {
+   "0": "FOC_SPEED_SRC_CORRECTED",
+   "1": "FOC_SPEED_SRC_OBSERVER"
+  },
+  "HW_TYPE": {
+   "0": "HW_TYPE_VESC",
+   "1": "HW_TYPE_VESC_BMS",
+   "2": "HW_TYPE_CUSTOM_MODULE"
+  },
+  "IMU_FILTER": {
+   "0": "IMU_FILTER_LOW",
+   "1": "IMU_FILTER_MEDIUM",
+   "2": "IMU_FILTER_HIGH"
+  },
+  "IMU_TYPE": {
+   "0": "IMU_TYPE_OFF",
+   "1": "IMU_TYPE_INTERNAL",
+   "2": "IMU_TYPE_EXTERNAL_MPU9X50",
+   "3": "IMU_TYPE_EXTERNAL_ICM20948",
+   "4": "IMU_TYPE_EXTERNAL_BMI160",
+   "5": "IMU_TYPE_EXTERNAL_LSM6DS3"
+  },
+  "KILL_SW_MODE": {
+   "0": "KILL_SW_MODE_DISABLED",
+   "1": "KILL_SW_MODE_PPM_LOW",
+   "2": "KILL_SW_MODE_PPM_HIGH",
+   "3": "KILL_SW_MODE_ADC2_LOW",
+   "4": "KILL_SW_MODE_ADC2_HIGH"
+  },
+  "MOTE_PACKET": {
+   "0": "MOTE_PACKET_BATT_LEVEL",
+   "1": "MOTE_PACKET_BUTTONS",
+   "2": "MOTE_PACKET_ALIVE",
+   "3": "MOTE_PACKET_FILL_RX_BUFFER",
+   "4": "MOTE_PACKET_FILL_RX_BUFFER_LONG",
+   "5": "MOTE_PACKET_PROCESS_RX_BUFFER",
+   "6": "MOTE_PACKET_PROCESS_SHORT_BUFFER",
+   "7": "MOTE_PACKET_PAIRING_INFO"
+  },
+  "MTPA_MODE": {
+   "0": "MTPA_MODE_OFF",
+   "1": "MTPA_MODE_IQ_TARGET",
+   "2": "MTPA_MODE_IQ_MEASURED"
+  },
+  "NRF_AW": {
+   "0": "NRF_AW_3",
+   "1": "NRF_AW_4",
+   "2": "NRF_AW_5"
+  },
+  "NRF_CRC": {
+   "0": "NRF_CRC_DISABLED",
+   "1": "NRF_CRC_1B",
+   "2": "NRF_CRC_2B"
+  },
+  "NRF_PAIR_RES": {
+   "0": "NRF_PAIR_STARTED",
+   "1": "NRF_PAIR_OK",
+   "2": "NRF_PAIR_FAIL"
+  },
+  "NRF_POWER": {
+   "0": "NRF_POWER_M18DBM",
+   "1": "NRF_POWER_M12DBM",
+   "2": "NRF_POWER_M6DBM",
+   "3": "NRF_POWER_0DBM",
+   "4": "NRF_POWER_OFF"
+  },
+  "NRF_RETR_DELAY": {
+   "0": "NRF_RETR_DELAY_250US",
+   "1": "NRF_RETR_DELAY_500US",
+   "10": "NRF_RETR_DELAY_2750US",
+   "11": "NRF_RETR_DELAY_3000US",
+   "12": "NRF_RETR_DELAY_3250US",
+   "13": "NRF_RETR_DELAY_3500US",
+   "14": "NRF_RETR_DELAY_3750US",
+   "15": "NRF_RETR_DELAY_4000US",
+   "2": "NRF_RETR_DELAY_750US",
+   "3": "NRF_RETR_DELAY_1000US",
+   "4": "NRF_RETR_DELAY_1250US",
+   "5": "NRF_RETR_DELAY_1500US",
+   "6": "NRF_RETR_DELAY_1750US",
+   "7": "NRF_RETR_DELAY_2000US",
+   "8": "NRF_RETR_DELAY_2250US",
+   "9": "NRF_RETR_DELAY_2500US"
+  },
+  "NRF_SPEED": {
+   "0": "NRF_SPEED_250K",
+   "1": "NRF_SPEED_1M",
+   "2": "NRF_SPEED_2M"
+  },
+  "PID_RATE": {
+   "0": "PID_RATE_25_HZ",
+   "1": "PID_RATE_50_HZ",
+   "2": "PID_RATE_100_HZ",
+   "3": "PID_RATE_250_HZ",
+   "4": "PID_RATE_500_HZ",
+   "5": "PID_RATE_1000_HZ",
+   "6": "PID_RATE_2500_HZ",
+   "7": "PID_RATE_5000_HZ",
+   "8": "PID_RATE_10000_HZ"
+  },
+  "SAFE_START_MODE": {
+   "0": "SAFE_START_DISABLED",
+   "1": "SAFE_START_REGULAR",
+   "2": "SAFE_START_NO_FAULT"
+  },
+  "SAT_COMP_MODE": {
+   "0": "SAT_COMP_DISABLED",
+   "1": "SAT_COMP_FACTOR",
+   "2": "SAT_COMP_LAMBDA",
+   "3": "SAT_COMP_LAMBDA_AND_FACTOR"
+  },
+  "SHUTDOWN_MODE": {
+   "0": "SHUTDOWN_MODE_ALWAYS_OFF",
+   "1": "SHUTDOWN_MODE_ALWAYS_ON",
+   "2": "SHUTDOWN_MODE_TOGGLE_BUTTON_ONLY",
+   "3": "SHUTDOWN_MODE_OFF_AFTER_10S",
+   "4": "SHUTDOWN_MODE_OFF_AFTER_1M",
+   "5": "SHUTDOWN_MODE_OFF_AFTER_5M",
+   "6": "SHUTDOWN_MODE_OFF_AFTER_10M",
+   "7": "SHUTDOWN_MODE_OFF_AFTER_30M",
+   "8": "SHUTDOWN_MODE_OFF_AFTER_1H",
+   "9": "SHUTDOWN_MODE_OFF_AFTER_5H"
+  },
+  "S_PID_SPEED_SRC": {
+   "0": "S_PID_SPEED_SRC_PLL",
+   "1": "S_PID_SPEED_SRC_FAST",
+   "2": "S_PID_SPEED_SRC_FASTER"
+  },
+  "UAVCAN_RAW_MODE": {
+   "0": "UAVCAN_RAW_MODE_CURRENT",
+   "1": "UAVCAN_RAW_MODE_CURRENT_NO_REV_BRAKE",
+   "2": "UAVCAN_RAW_MODE_DUTY",
+   "3": "UAVCAN_RAW_MODE_RPM"
+  },
+  "UAVCAN_STATUS_CURRENT_MODE": {
+   "0": "UAVCAN_STATUS_CURRENT_MODE_MOTOR",
+   "1": "UAVCAN_STATUS_CURRENT_MODE_INPUT"
+  },
+  "adc_control_type": {
+   "0": "ADC_CTRL_TYPE_NONE",
+   "1": "ADC_CTRL_TYPE_CURRENT",
+   "10": "ADC_CTRL_TYPE_DUTY_REV_CENTER",
+   "11": "ADC_CTRL_TYPE_DUTY_REV_BUTTON",
+   "12": "ADC_CTRL_TYPE_PID",
+   "13": "ADC_CTRL_TYPE_PID_REV_CENTER",
+   "14": "ADC_CTRL_TYPE_PID_REV_BUTTON",
+   "2": "ADC_CTRL_TYPE_CURRENT_REV_CENTER",
+   "3": "ADC_CTRL_TYPE_CURRENT_REV_BUTTON",
+   "4": "ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_ADC",
+   "5": "ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_CENTER",
+   "6": "ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_CENTER",
+   "7": "ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_BUTTON",
+   "8": "ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_ADC",
+   "9": "ADC_CTRL_TYPE_DUTY"
+  },
+  "app_use": {
+   "0": "APP_NONE",
+   "1": "APP_PPM",
+   "10": "APP_ADC_PAS",
+   "2": "APP_ADC",
+   "3": "APP_UART",
+   "4": "APP_PPM_UART",
+   "5": "APP_ADC_UART",
+   "6": "APP_NUNCHUK",
+   "7": "APP_NRF",
+   "8": "APP_CUSTOM",
+   "9": "APP_PAS"
+  },
+  "chuk_control_type": {
+   "0": "CHUK_CTRL_TYPE_NONE",
+   "1": "CHUK_CTRL_TYPE_CURRENT",
+   "2": "CHUK_CTRL_TYPE_CURRENT_NOREV",
+   "3": "CHUK_CTRL_TYPE_CURRENT_BIDIRECTIONAL"
+  },
+  "debug_sampling_mode": {
+   "0": "DEBUG_SAMPLING_OFF",
+   "1": "DEBUG_SAMPLING_NOW",
+   "2": "DEBUG_SAMPLING_START",
+   "3": "DEBUG_SAMPLING_TRIGGER_START",
+   "4": "DEBUG_SAMPLING_TRIGGER_FAULT",
+   "5": "DEBUG_SAMPLING_TRIGGER_START_NOSEND",
+   "6": "DEBUG_SAMPLING_TRIGGER_FAULT_NOSEND",
+   "7": "DEBUG_SAMPLING_SEND_LAST_SAMPLES",
+   "8": "DEBUG_SAMPLING_SEND_SINGLE_SAMPLE"
+  },
+  "disp_pos_mode": {
+   "0": "DISP_POS_MODE_NONE",
+   "1": "DISP_POS_MODE_INDUCTANCE",
+   "2": "DISP_POS_MODE_OBSERVER",
+   "3": "DISP_POS_MODE_ENCODER",
+   "4": "DISP_POS_MODE_PID_POS",
+   "5": "DISP_POS_MODE_PID_POS_ERROR",
+   "6": "DISP_POS_MODE_ENCODER_OBSERVER_ERROR",
+   "7": "DISP_POS_MODE_HALL_OBSERVER_ERROR"
+  },
+  "drv8301_oc_mode": {
+   "0": "DRV8301_OC_LIMIT",
+   "1": "DRV8301_OC_LATCH_SHUTDOWN",
+   "2": "DRV8301_OC_REPORT_ONLY",
+   "3": "DRV8301_OC_DISABLED"
+  },
+  "foc_hfi_samples": {
+   "0": "HFI_SAMPLES_8",
+   "1": "HFI_SAMPLES_16",
+   "2": "HFI_SAMPLES_32"
+  },
+  "mc_comm_mode": {
+   "0": "COMM_MODE_INTEGRATE",
+   "1": "COMM_MODE_DELAY"
+  },
+  "mc_control_mode": {
+   "0": "CONTROL_MODE_DUTY",
+   "1": "CONTROL_MODE_SPEED",
+   "10": "CONTROL_MODE_NONE",
+   "2": "CONTROL_MODE_CURRENT",
+   "3": "CONTROL_MODE_CURRENT_BRAKE",
+   "4": "CONTROL_MODE_POS",
+   "5": "CONTROL_MODE_HANDBRAKE",
+   "6": "CONTROL_MODE_OPENLOOP",
+   "7": "CONTROL_MODE_OPENLOOP_PHASE",
+   "8": "CONTROL_MODE_OPENLOOP_DUTY",
+   "9": "CONTROL_MODE_OPENLOOP_DUTY_PHASE"
+  },
+  "mc_fault_code": {
+   "0": "FAULT_CODE_NONE",
+   "1": "FAULT_CODE_OVER_VOLTAGE",
+   "10": "FAULT_CODE_BOOTING_FROM_WATCHDOG_RESET",
+   "11": "FAULT_CODE_ENCODER_SPI",
+   "12": "FAULT_CODE_ENCODER_SINCOS_BELOW_MIN_AMPLITUDE",
+   "13": "FAULT_CODE_ENCODER_SINCOS_ABOVE_MAX_AMPLITUDE",
+   "14": "FAULT_CODE_FLASH_CORRUPTION",
+   "15": "FAULT_CODE_HIGH_OFFSET_CURRENT_SENSOR_1",
+   "16": "FAULT_CODE_HIGH_OFFSET_CURRENT_SENSOR_2",
+   "17": "FAULT_CODE_HIGH_OFFSET_CURRENT_SENSOR_3",
+   "18": "FAULT_CODE_UNBALANCED_CURRENTS",
+   "19": "FAULT_CODE_BRK",
+   "2": "FAULT_CODE_UNDER_VOLTAGE",
+   "20": "FAULT_CODE_RESOLVER_LOT",
+   "21": "FAULT_CODE_RESOLVER_DOS",
+   "22": "FAULT_CODE_RESOLVER_LOS",
+   "23": "FAULT_CODE_FLASH_CORRUPTION_APP_CFG",
+   "24": "FAULT_CODE_FLASH_CORRUPTION_MC_CFG",
+   "25": "FAULT_CODE_ENCODER_NO_MAGNET",
+   "26": "FAULT_CODE_ENCODER_MAGNET_TOO_STRONG",
+   "27": "FAULT_CODE_PHASE_FILTER",
+   "28": "FAULT_CODE_ENCODER_FAULT",
+   "29": "FAULT_CODE_LV_OUTPUT_FAULT",
+   "3": "FAULT_CODE_DRV",
+   "30": "FAULT_CODE_ENCODER_SLIP",
+   "31": "FAULT_CODE_OVERSPEED",
+   "32": "FAULT_CODE_UNDERSPEED",
+   "33": "FAULT_CODE_ABS_OVERSPEED",
+   "4": "FAULT_CODE_ABS_OVER_CURRENT",
+   "5": "FAULT_CODE_OVER_TEMP_FET",
+   "6": "FAULT_CODE_OVER_TEMP_MOTOR",
+   "7": "FAULT_CODE_GATE_DRIVER_OVER_VOLTAGE",
+   "8": "FAULT_CODE_GATE_DRIVER_UNDER_VOLTAGE",
+   "9": "FAULT_CODE_MCU_UNDER_VOLTAGE"
+  },
+  "mc_foc_cc_decoupling_mode": {
+   "0": "FOC_CC_DECOUPLING_DISABLED",
+   "1": "FOC_CC_DECOUPLING_CROSS",
+   "2": "FOC_CC_DECOUPLING_BEMF",
+   "3": "FOC_CC_DECOUPLING_CROSS_BEMF"
+  },
+  "mc_foc_control_sample_mode": {
+   "0": "FOC_CONTROL_SAMPLE_MODE_V0",
+   "1": "FOC_CONTROL_SAMPLE_MODE_V0_V7",
+   "2": "FOC_CONTROL_SAMPLE_MODE_V0_V7_INTERPOL"
+  },
+  "mc_foc_current_sample_mode": {
+   "0": "FOC_CURRENT_SAMPLE_MODE_LONGEST_ZERO",
+   "1": "FOC_CURRENT_SAMPLE_MODE_ALL_SENSORS",
+   "2": "FOC_CURRENT_SAMPLE_MODE_HIGH_CURRENT",
+   "3": "FOC_CURRENT_SAMPLE_MODE_BEST_SENSOR"
+  },
+  "mc_foc_hfi_amb_mode": {
+   "0": "FOC_AMB_MODE_SIX_VECTOR",
+   "1": "FOC_AMB_MODE_D_SINGLE_PULSE",
+   "2": "FOC_AMB_MODE_D_DOUBLE_PULSE"
+  },
+  "mc_foc_observer_type": {
+   "0": "FOC_OBSERVER_ORTEGA_ORIGINAL",
+   "1": "FOC_OBSERVER_MXLEMMING",
+   "2": "FOC_OBSERVER_ORTEGA_LAMBDA_COMP",
+   "3": "FOC_OBSERVER_MXLEMMING_LAMBDA_COMP",
+   "4": "FOC_OBSERVER_MXV",
+   "5": "FOC_OBSERVER_MXV_LAMBDA_COMP",
+   "6": "FOC_OBSERVER_MXV_LAMBDA_COMP_LIN"
+  },
+  "mc_foc_sensor_mode": {
+   "0": "FOC_SENSOR_MODE_SENSORLESS",
+   "1": "FOC_SENSOR_MODE_ENCODER",
+   "2": "FOC_SENSOR_MODE_HALL",
+   "3": "FOC_SENSOR_MODE_HFI",
+   "4": "FOC_SENSOR_MODE_HFI_START",
+   "5": "FOC_SENSOR_MODE_HFI_V2",
+   "6": "FOC_SENSOR_MODE_HFI_V3",
+   "7": "FOC_SENSOR_MODE_HFI_V4",
+   "8": "FOC_SENSOR_MODE_HFI_V5",
+   "9": "FOC_SENSOR_MODE_ENCODER_AB"
+  },
+  "mc_motor_type": {
+   "0": "MOTOR_TYPE_BLDC",
+   "1": "MOTOR_TYPE_DC",
+   "2": "MOTOR_TYPE_FOC"
+  },
+  "mc_pwm_mode": {
+   "0": "PWM_MODE_NONSYNCHRONOUS_HISW",
+   "1": "PWM_MODE_SYNCHRONOUS",
+   "2": "PWM_MODE_BIPOLAR"
+  },
+  "mc_sensor_mode": {
+   "0": "SENSOR_MODE_SENSORLESS",
+   "1": "SENSOR_MODE_SENSORED",
+   "2": "SENSOR_MODE_HYBRID"
+  },
+  "mc_state": {
+   "0": "MC_STATE_OFF",
+   "1": "MC_STATE_DETECTING",
+   "2": "MC_STATE_RUNNING",
+   "3": "MC_STATE_FULL_BRAKE"
+  },
+  "out_aux_mode": {
+   "0": "OUT_AUX_MODE_OFF",
+   "1": "OUT_AUX_MODE_ON_AFTER_2S",
+   "10": "OUT_AUX_MODE_MOSFET_70",
+   "11": "OUT_AUX_MODE_MOTOR_MOSFET_50",
+   "12": "OUT_AUX_MODE_MOTOR_MOSFET_70",
+   "2": "OUT_AUX_MODE_ON_AFTER_5S",
+   "3": "OUT_AUX_MODE_ON_AFTER_10S",
+   "4": "OUT_AUX_MODE_UNUSED",
+   "5": "OUT_AUX_MODE_ON_WHEN_RUNNING",
+   "6": "OUT_AUX_MODE_ON_WHEN_NOT_RUNNING",
+   "7": "OUT_AUX_MODE_MOTOR_50",
+   "8": "OUT_AUX_MODE_MOSFET_50",
+   "9": "OUT_AUX_MODE_MOTOR_70"
+  },
+  "pas_control_type": {
+   "0": "PAS_CTRL_TYPE_NONE",
+   "1": "PAS_CTRL_TYPE_CADENCE",
+   "2": "PAS_CTRL_TYPE_TORQUE",
+   "3": "PAS_CTRL_TYPE_TORQUE_WITH_CADENCE_TIMEOUT"
+  },
+  "pas_sensor_type": {
+   "0": "PAS_SENSOR_TYPE_QUADRATURE"
+  },
+  "ppm_control_type": {
+   "0": "PPM_CTRL_TYPE_NONE",
+   "1": "PPM_CTRL_TYPE_CURRENT",
+   "10": "PPM_CTRL_TYPE_PID_POSITION_180",
+   "11": "PPM_CTRL_TYPE_PID_POSITION_360",
+   "2": "PPM_CTRL_TYPE_CURRENT_NOREV",
+   "3": "PPM_CTRL_TYPE_CURRENT_NOREV_BRAKE",
+   "4": "PPM_CTRL_TYPE_DUTY",
+   "5": "PPM_CTRL_TYPE_DUTY_NOREV",
+   "6": "PPM_CTRL_TYPE_PID",
+   "7": "PPM_CTRL_TYPE_PID_NOREV",
+   "8": "PPM_CTRL_TYPE_CURRENT_BRAKE_REV_HYST",
+   "9": "PPM_CTRL_TYPE_CURRENT_SMART_REV"
+  },
+  "sensor_port_mode": {
+   "0": "SENSOR_PORT_MODE_HALL",
+   "1": "SENSOR_PORT_MODE_ABI",
+   "10": "SENSOR_PORT_MODE_TLE5012_SSC_SW",
+   "11": "SENSOR_PORT_MODE_TLE5012_SSC_HW",
+   "12": "SENSOR_PORT_MODE_CUSTOM_ENCODER",
+   "13": "SENSOR_PORT_MODE_PWM",
+   "14": "SENSOR_PORT_MODE_PWM_ABI",
+   "15": "SENSOR_PORT_MODE_MA782",
+   "16": "SENSOR_PORT_MODE_AMT22",
+   "2": "SENSOR_PORT_MODE_AS5047_SPI",
+   "3": "SENSOR_PORT_MODE_AD2S1205",
+   "4": "SENSOR_PORT_MODE_SINCOS",
+   "5": "SENSOR_PORT_MODE_TS5700N8501",
+   "6": "SENSOR_PORT_MODE_TS5700N8501_MULTITURN",
+   "7": "SENSOR_PORT_MODE_MT6816_SPI_HW",
+   "8": "SENSOR_PORT_MODE_AS5x47U_SPI",
+   "9": "SENSOR_PORT_MODE_BISSC"
+  },
+  "temp_sensor_type": {
+   "0": "TEMP_SENSOR_NTC_10K_25C",
+   "1": "TEMP_SENSOR_PTC_1K_100C",
+   "2": "TEMP_SENSOR_KTY83_122",
+   "3": "TEMP_SENSOR_NTC_100K_25C",
+   "4": "TEMP_SENSOR_KTY84_130",
+   "5": "TEMP_SENSOR_NTCX",
+   "6": "TEMP_SENSOR_PTCX",
+   "7": "TEMP_SENSOR_PT1000",
+   "8": "TEMP_SENSOR_DISABLED"
+  },
+  "thr_exp_mode": {
+   "0": "THR_EXP_EXPO",
+   "1": "THR_EXP_NATURAL",
+   "2": "THR_EXP_POLY"
+  }
+ },
+ "mcconf_ops": [
+  [
+   "sig",
+   null,
+   null
+  ],
+  [
+   "u8",
+   "pwm_mode",
+   null
+  ],
+  [
+   "u8",
+   "comm_mode",
+   null
+  ],
+  [
+   "u8",
+   "motor_type",
+   null
+  ],
+  [
+   "u8",
+   "sensor_mode",
+   null
+  ],
+  [
+   "f32auto",
+   "l_current_max",
+   null
+  ],
+  [
+   "f32auto",
+   "l_current_min",
+   null
+  ],
+  [
+   "f32auto",
+   "l_in_current_max",
+   null
+  ],
+  [
+   "f32auto",
+   "l_in_current_min",
+   null
+  ],
+  [
+   "f16",
+   "l_in_current_map_start",
+   10000.0
+  ],
+  [
+   "f16",
+   "l_in_current_map_filter",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "l_abs_current_max",
+   null
+  ],
+  [
+   "f32auto",
+   "l_min_erpm",
+   null
+  ],
+  [
+   "f32auto",
+   "l_max_erpm",
+   null
+  ],
+  [
+   "f16",
+   "l_erpm_start",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "l_max_erpm_fbrake",
+   null
+  ],
+  [
+   "f32auto",
+   "l_max_erpm_fbrake_cc",
+   null
+  ],
+  [
+   "f16",
+   "l_min_vin",
+   10.0
+  ],
+  [
+   "f16",
+   "l_max_vin",
+   10.0
+  ],
+  [
+   "f16",
+   "l_battery_cut_start",
+   10.0
+  ],
+  [
+   "f16",
+   "l_battery_cut_end",
+   10.0
+  ],
+  [
+   "f16",
+   "l_battery_regen_cut_start",
+   10.0
+  ],
+  [
+   "f16",
+   "l_battery_regen_cut_end",
+   10.0
+  ],
+  [
+   "u8",
+   "l_slow_abs_current",
+   null
+  ],
+  [
+   "u8",
+   "l_temp_fet_start",
+   null
+  ],
+  [
+   "u8",
+   "l_temp_fet_end",
+   null
+  ],
+  [
+   "u8",
+   "l_temp_motor_start",
+   null
+  ],
+  [
+   "u8",
+   "l_temp_motor_end",
+   null
+  ],
+  [
+   "f16",
+   "l_temp_accel_dec",
+   10000.0
+  ],
+  [
+   "f16",
+   "l_min_duty",
+   10000.0
+  ],
+  [
+   "f16",
+   "l_max_duty",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "l_watt_max",
+   null
+  ],
+  [
+   "f32auto",
+   "l_watt_min",
+   null
+  ],
+  [
+   "f16",
+   "l_current_max_scale",
+   10000.0
+  ],
+  [
+   "f16",
+   "l_current_min_scale",
+   10000.0
+  ],
+  [
+   "f16",
+   "l_duty_start",
+   10000.0
+  ],
+  [
+   "u8",
+   "l_additional_faults",
+   null
+  ],
+  [
+   "f32auto",
+   "sl_min_erpm",
+   null
+  ],
+  [
+   "f32auto",
+   "sl_min_erpm_cycle_int_limit",
+   null
+  ],
+  [
+   "f32auto",
+   "sl_max_fullbreak_current_dir_change",
+   null
+  ],
+  [
+   "f16",
+   "sl_cycle_int_limit",
+   10.0
+  ],
+  [
+   "f16",
+   "sl_phase_advance_at_br",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "sl_cycle_int_rpm_br",
+   null
+  ],
+  [
+   "f32auto",
+   "sl_bemf_coupling_k",
+   null
+  ],
+  [
+   "u8",
+   "hall_table[0]",
+   null
+  ],
+  [
+   "u8",
+   "hall_table[1]",
+   null
+  ],
+  [
+   "u8",
+   "hall_table[2]",
+   null
+  ],
+  [
+   "u8",
+   "hall_table[3]",
+   null
+  ],
+  [
+   "u8",
+   "hall_table[4]",
+   null
+  ],
+  [
+   "u8",
+   "hall_table[5]",
+   null
+  ],
+  [
+   "u8",
+   "hall_table[6]",
+   null
+  ],
+  [
+   "u8",
+   "hall_table[7]",
+   null
+  ],
+  [
+   "f32auto",
+   "hall_sl_erpm",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_current_kp",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_current_ki",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_f_zv",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_dt_us",
+   null
+  ],
+  [
+   "u8",
+   "foc_encoder_inverted",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_encoder_offset",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_encoder_ratio",
+   null
+  ],
+  [
+   "u8",
+   "foc_sensor_mode",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_pll_kp",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_pll_ki",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_motor_l",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_motor_ld_lq_diff",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_motor_r",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_motor_flux_linkage",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_observer_gain",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_observer_gain_slow",
+   null
+  ],
+  [
+   "f16",
+   "foc_observer_offset",
+   1000.0
+  ],
+  [
+   "f32auto",
+   "foc_duty_dowmramp_kp",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_duty_dowmramp_ki",
+   null
+  ],
+  [
+   "f16",
+   "foc_start_curr_dec",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "foc_start_curr_dec_rpm",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_openloop_rpm",
+   null
+  ],
+  [
+   "f16",
+   "foc_openloop_rpm_low",
+   1000.0
+  ],
+  [
+   "f16",
+   "foc_sl_openloop_hyst",
+   100.0
+  ],
+  [
+   "f16",
+   "foc_sl_openloop_time_lock",
+   100.0
+  ],
+  [
+   "f16",
+   "foc_sl_openloop_time_ramp",
+   100.0
+  ],
+  [
+   "f16",
+   "foc_sl_openloop_time",
+   100.0
+  ],
+  [
+   "f16",
+   "foc_sl_openloop_boost_q",
+   100.0
+  ],
+  [
+   "f16",
+   "foc_sl_openloop_max_q",
+   100.0
+  ],
+  [
+   "u8",
+   "foc_hall_table[0]",
+   null
+  ],
+  [
+   "u8",
+   "foc_hall_table[1]",
+   null
+  ],
+  [
+   "u8",
+   "foc_hall_table[2]",
+   null
+  ],
+  [
+   "u8",
+   "foc_hall_table[3]",
+   null
+  ],
+  [
+   "u8",
+   "foc_hall_table[4]",
+   null
+  ],
+  [
+   "u8",
+   "foc_hall_table[5]",
+   null
+  ],
+  [
+   "u8",
+   "foc_hall_table[6]",
+   null
+  ],
+  [
+   "u8",
+   "foc_hall_table[7]",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_hall_interp_erpm",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_sl_erpm_start",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_sl_erpm",
+   null
+  ],
+  [
+   "u8",
+   "foc_control_sample_mode",
+   null
+  ],
+  [
+   "u8",
+   "foc_current_sample_mode",
+   null
+  ],
+  [
+   "u8",
+   "foc_sat_comp_mode",
+   null
+  ],
+  [
+   "f16",
+   "foc_sat_comp",
+   1000.0
+  ],
+  [
+   "u8",
+   "foc_temp_comp",
+   null
+  ],
+  [
+   "f16",
+   "foc_temp_comp_base_temp",
+   100.0
+  ],
+  [
+   "f16",
+   "foc_current_filter_const",
+   10000.0
+  ],
+  [
+   "u8",
+   "foc_cc_decoupling",
+   null
+  ],
+  [
+   "u8",
+   "foc_observer_type",
+   null
+  ],
+  [
+   "u8",
+   "foc_hfi_amb_mode",
+   null
+  ],
+  [
+   "f16",
+   "foc_hfi_amb_current",
+   10.0
+  ],
+  [
+   "u8",
+   "foc_hfi_amb_tres",
+   null
+  ],
+  [
+   "f16",
+   "foc_hfi_voltage_start",
+   10.0
+  ],
+  [
+   "f16",
+   "foc_hfi_voltage_run",
+   10.0
+  ],
+  [
+   "f16",
+   "foc_hfi_voltage_max",
+   10.0
+  ],
+  [
+   "f16",
+   "foc_hfi_gain",
+   1000.0
+  ],
+  [
+   "f16",
+   "foc_hfi_max_err",
+   1000.0
+  ],
+  [
+   "f16",
+   "foc_hfi_hyst",
+   100.0
+  ],
+  [
+   "f32auto",
+   "foc_sl_erpm_hfi",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_hfi_reset_erpm",
+   null
+  ],
+  [
+   "u16",
+   "foc_hfi_start_samples",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_hfi_obs_ovr_sec",
+   null
+  ],
+  [
+   "u8",
+   "foc_hfi_samples",
+   null
+  ],
+  [
+   "u8",
+   "foc_offsets_cal_mode",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_offsets_current[0]",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_offsets_current[1]",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_offsets_current[2]",
+   null
+  ],
+  [
+   "f16",
+   "foc_offsets_voltage[0]",
+   10000.0
+  ],
+  [
+   "f16",
+   "foc_offsets_voltage[1]",
+   10000.0
+  ],
+  [
+   "f16",
+   "foc_offsets_voltage[2]",
+   10000.0
+  ],
+  [
+   "f16",
+   "foc_offsets_voltage_undriven[0]",
+   10000.0
+  ],
+  [
+   "f16",
+   "foc_offsets_voltage_undriven[1]",
+   10000.0
+  ],
+  [
+   "f16",
+   "foc_offsets_voltage_undriven[2]",
+   10000.0
+  ],
+  [
+   "u8",
+   "foc_phase_filter_enable",
+   null
+  ],
+  [
+   "u8",
+   "foc_phase_filter_disable_fault",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_phase_filter_max_erpm",
+   null
+  ],
+  [
+   "u8",
+   "foc_mtpa_mode",
+   null
+  ],
+  [
+   "f32auto",
+   "foc_fw_current_max",
+   null
+  ],
+  [
+   "f16",
+   "foc_fw_duty_start",
+   10000.0
+  ],
+  [
+   "f16",
+   "foc_fw_ramp_time",
+   1000.0
+  ],
+  [
+   "f16",
+   "foc_fw_q_current_factor",
+   10000.0
+  ],
+  [
+   "f16",
+   "foc_fw_backoff",
+   1000.0
+  ],
+  [
+   "u8",
+   "foc_speed_soure",
+   null
+  ],
+  [
+   "u8",
+   "foc_short_ls_on_zero_duty",
+   null
+  ],
+  [
+   "f16",
+   "foc_overmod_factor",
+   10000.0
+  ],
+  [
+   "f16",
+   "foc_mag_vd_max",
+   10000.0
+  ],
+  [
+   "u8",
+   "sp_pid_loop_rate",
+   null
+  ],
+  [
+   "f32auto",
+   "s_pid_kp",
+   null
+  ],
+  [
+   "f32auto",
+   "s_pid_ki",
+   null
+  ],
+  [
+   "f32auto",
+   "s_pid_kd",
+   null
+  ],
+  [
+   "f16",
+   "s_pid_kd_filter",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "s_pid_min_erpm",
+   null
+  ],
+  [
+   "u8",
+   "s_pid_allow_braking",
+   null
+  ],
+  [
+   "f32auto",
+   "s_pid_ramp_erpms_s",
+   null
+  ],
+  [
+   "u8",
+   "s_pid_speed_source",
+   null
+  ],
+  [
+   "f32auto",
+   "p_pid_kp",
+   null
+  ],
+  [
+   "f32auto",
+   "p_pid_ki",
+   null
+  ],
+  [
+   "f32auto",
+   "p_pid_kd",
+   null
+  ],
+  [
+   "f32auto",
+   "p_pid_kd_proc",
+   null
+  ],
+  [
+   "f16",
+   "p_pid_kd_filter",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "p_pid_ang_div",
+   null
+  ],
+  [
+   "f16",
+   "p_pid_gain_dec_angle",
+   10.0
+  ],
+  [
+   "f32auto",
+   "p_pid_offset",
+   null
+  ],
+  [
+   "f16",
+   "cc_startup_boost_duty",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "cc_min_current",
+   null
+  ],
+  [
+   "f32auto",
+   "cc_gain",
+   null
+  ],
+  [
+   "f16",
+   "cc_ramp_step_max",
+   10000.0
+  ],
+  [
+   "i32",
+   "m_fault_stop_time_ms",
+   null
+  ],
+  [
+   "f16",
+   "m_duty_ramp_step",
+   10000.0
+  ],
+  [
+   "f32auto",
+   "m_current_backoff_gain",
+   null
+  ],
+  [
+   "u32",
+   "m_encoder_counts",
+   null
+  ],
+  [
+   "f16",
+   "m_encoder_sin_amp",
+   1000.0
+  ],
+  [
+   "f16",
+   "m_encoder_cos_amp",
+   1000.0
+  ],
+  [
+   "f16",
+   "m_encoder_sin_offset",
+   1000.0
+  ],
+  [
+   "f16",
+   "m_encoder_cos_offset",
+   1000.0
+  ],
+  [
+   "f16",
+   "m_encoder_sincos_filter_constant",
+   1000.0
+  ],
+  [
+   "f16",
+   "m_encoder_sincos_phase_correction",
+   1000.0
+  ],
+  [
+   "u8",
+   "m_sensor_port_mode",
+   null
+  ],
+  [
+   "u8",
+   "m_invert_direction",
+   null
+  ],
+  [
+   "u8",
+   "m_drv8301_oc_mode",
+   null
+  ],
+  [
+   "u8",
+   "m_drv8301_oc_adj",
+   null
+  ],
+  [
+   "f32auto",
+   "m_bldc_f_sw_min",
+   null
+  ],
+  [
+   "f32auto",
+   "m_bldc_f_sw_max",
+   null
+  ],
+  [
+   "f32auto",
+   "m_dc_f_sw",
+   null
+  ],
+  [
+   "f32auto",
+   "m_ntc_motor_beta",
+   null
+  ],
+  [
+   "u8",
+   "m_out_aux_mode",
+   null
+  ],
+  [
+   "u8",
+   "m_motor_temp_sens_type",
+   null
+  ],
+  [
+   "f32auto",
+   "m_ptc_motor_coeff",
+   null
+  ],
+  [
+   "f16",
+   "m_ntcx_ptcx_res",
+   0.1
+  ],
+  [
+   "f16",
+   "m_ntcx_ptcx_temp_base",
+   10.0
+  ],
+  [
+   "u8",
+   "m_hall_extra_samples",
+   null
+  ],
+  [
+   "u8",
+   "m_batt_filter_const",
+   null
+  ],
+  [
+   "u8",
+   "si_motor_poles",
+   null
+  ],
+  [
+   "f32auto",
+   "si_gear_ratio",
+   null
+  ],
+  [
+   "f32auto",
+   "si_wheel_diameter",
+   null
+  ],
+  [
+   "u8",
+   "si_battery_type",
+   null
+  ],
+  [
+   "u8",
+   "si_battery_cells",
+   null
+  ],
+  [
+   "f32auto",
+   "si_battery_ah",
+   null
+  ],
+  [
+   "f32auto",
+   "si_motor_nl_current",
+   null
+  ],
+  [
+   "u8",
+   "bms.type",
+   null
+  ],
+  [
+   "u8",
+   "bms.limit_mode",
+   null
+  ],
+  [
+   "u8",
+   "bms.t_limit_start",
+   null
+  ],
+  [
+   "u8",
+   "bms.t_limit_end",
+   null
+  ],
+  [
+   "f16",
+   "bms.soc_limit_start",
+   1000.0
+  ],
+  [
+   "f16",
+   "bms.soc_limit_end",
+   1000.0
+  ],
+  [
+   "f16",
+   "bms.vmin_limit_start",
+   1000.0
+  ],
+  [
+   "f16",
+   "bms.vmin_limit_end",
+   1000.0
+  ],
+  [
+   "f16",
+   "bms.vmax_limit_start",
+   1000.0
+  ],
+  [
+   "f16",
+   "bms.vmax_limit_end",
+   1000.0
+  ],
+  [
+   "u8",
+   "bms.fwd_can_mode",
+   null
+  ]
+ ],
+ "signatures": {
+  "APPCONF_SIGNATURE": 2384027283,
+  "MCCONF_SIGNATURE": 1470992211
+ },
+ "structs": {
+  "ATTITUDE_INFO": {
+   "accMagP": "float",
+   "acc_confidence_decay": "float",
+   "beta": "float",
+   "initialUpdateDone": "int",
+   "integralFBx": "float",
+   "integralFBy": "float",
+   "integralFBz": "float",
+   "ki": "float",
+   "kp": "float",
+   "q0": "float",
+   "q1": "float",
+   "q2": "float",
+   "q3": "float"
+  },
+  "adc_config": {
+   "buttons": "uint8_t",
+   "ctrl_type": "adc_control_type",
+   "hyst": "float",
+   "multi_esc": "bool",
+   "ramp_time_neg": "float",
+   "ramp_time_pos": "float",
+   "safe_start": "SAFE_START_MODE",
+   "tc": "bool",
+   "tc_max_diff": "float",
+   "throttle_exp": "float",
+   "throttle_exp_brake": "float",
+   "throttle_exp_mode": "thr_exp_mode",
+   "update_rate_hz": "uint32_t",
+   "use_filter": "bool",
+   "voltage2_end": "float",
+   "voltage2_inverted": "bool",
+   "voltage2_start": "float",
+   "voltage_center": "float",
+   "voltage_end": "float",
+   "voltage_inverted": "bool",
+   "voltage_max": "float",
+   "voltage_min": "float",
+   "voltage_start": "float"
+  },
+  "app_configuration": {
+   "app_adc_conf": "adc_config",
+   "app_chuk_conf": "chuk_config",
+   "app_nrf_conf": "nrf_config",
+   "app_pas_conf": "pas_config",
+   "app_ppm_conf": "ppm_config",
+   "app_to_use": "app_use",
+   "app_uart_baudrate": "uint32_t",
+   "can_baud_rate": "CAN_BAUD",
+   "can_mode": "CAN_MODE",
+   "can_status_msgs_r1": "uint8_t",
+   "can_status_msgs_r2": "uint8_t",
+   "can_status_rate_1": "uint32_t",
+   "can_status_rate_2": "uint32_t",
+   "controller_id": "uint8_t",
+   "crc": "uint16_t",
+   "imu_conf": "imu_config",
+   "kill_sw_mode": "KILL_SW_MODE",
+   "pairing_done": "bool",
+   "permanent_uart_enabled": "bool",
+   "servo_out_enable": "bool",
+   "shutdown_mode": "SHUTDOWN_MODE",
+   "timeout_brake_current": "float",
+   "timeout_msec": "uint32_t",
+   "uavcan_esc_index": "uint8_t",
+   "uavcan_raw_mode": "UAVCAN_RAW_MODE",
+   "uavcan_raw_rpm_max": "float",
+   "uavcan_status_current_mode": "UAVCAN_STATUS_CURRENT_MODE"
+  },
+  "bms_config": {
+   "fwd_can_mode": "BMS_FWD_CAN_MODE",
+   "limit_mode": "uint8_t",
+   "soc_limit_end": "float",
+   "soc_limit_start": "float",
+   "t_limit_end": "float",
+   "t_limit_start": "float",
+   "type": "BMS_TYPE",
+   "vmax_limit_end": "float",
+   "vmax_limit_start": "float",
+   "vmin_limit_end": "float",
+   "vmin_limit_start": "float"
+  },
+  "bms_soc_soh_temp_stat": {
+   "data_version": "int",
+   "id": "int",
+   "is_balancing": "bool",
+   "is_charge_allowed": "bool",
+   "is_charging": "bool",
+   "rx_time": "systime_t",
+   "soc": "float",
+   "soh": "float",
+   "t_cell_max": "float",
+   "v_cell_max": "float",
+   "v_cell_min": "float"
+  },
+  "bms_values": {
+   "ah_cnt": "float",
+   "ah_cnt_chg_total": "float",
+   "ah_cnt_dis_total": "float",
+   "bal_state": "bool",
+   "can_id": "int",
+   "cell_num": "int",
+   "data_version": "int",
+   "hum": "float",
+   "i_in": "float",
+   "i_in_ic": "float",
+   "is_balancing": "int",
+   "is_charge_allowed": "int",
+   "is_charging": "int",
+   "pressure": "float",
+   "soc": "float",
+   "soh": "float",
+   "status": "char",
+   "temp_adc_num": "int",
+   "temp_hum": "float",
+   "temp_ic": "float",
+   "temp_max_cell": "float",
+   "temps_adc": "float",
+   "update_time": "systime_t",
+   "v_cell": "float",
+   "v_cell_max": "float",
+   "v_cell_min": "float",
+   "v_charge": "float",
+   "v_tot": "float",
+   "wh_cnt": "float",
+   "wh_cnt_chg_total": "float",
+   "wh_cnt_dis_total": "float"
+  },
+  "can_status_msg": {
+   "current": "float",
+   "duty": "float",
+   "id": "int",
+   "rpm": "float",
+   "rx_time": "systime_t"
+  },
+  "can_status_msg_2": {
+   "amp_hours": "float",
+   "amp_hours_charged": "float",
+   "id": "int",
+   "rx_time": "systime_t"
+  },
+  "can_status_msg_3": {
+   "id": "int",
+   "rx_time": "systime_t",
+   "watt_hours": "float",
+   "watt_hours_charged": "float"
+  },
+  "can_status_msg_4": {
+   "current_in": "float",
+   "id": "int",
+   "pid_pos_now": "float",
+   "rx_time": "systime_t",
+   "temp_fet": "float",
+   "temp_motor": "float"
+  },
+  "can_status_msg_5": {
+   "id": "int",
+   "rx_time": "systime_t",
+   "tacho_value": "int32_t",
+   "v_in": "float"
+  },
+  "can_status_msg_6": {
+   "adc_1": "float",
+   "adc_2": "float",
+   "adc_3": "float",
+   "id": "int",
+   "ppm": "float",
+   "rx_time": "systime_t"
+  },
+  "chuck_data": {
+   "acc_x": "int",
+   "acc_y": "int",
+   "acc_z": "int",
+   "bt_c": "bool",
+   "bt_z": "bool",
+   "is_rev": "bool",
+   "js_x": "int",
+   "js_y": "int",
+   "rev_has_state": "bool"
+  },
+  "chuk_config": {
+   "coast_brake_level": "float",
+   "coast_brake_ramp_time": "float",
+   "ctrl_type": "chuk_control_type",
+   "hyst": "float",
+   "multi_esc": "bool",
+   "ramp_time_neg": "float",
+   "ramp_time_pos": "float",
+   "smart_rev_max_duty": "float",
+   "smart_rev_ramp_time": "float",
+   "stick_erpm_per_s_in_cc": "float",
+   "tc": "bool",
+   "tc_max_diff": "float",
+   "throttle_exp": "float",
+   "throttle_exp_brake": "float",
+   "throttle_exp_mode": "thr_exp_mode",
+   "use_smart_rev": "bool"
+  },
+  "fault_data": {
+   "comm_step": "int",
+   "current": "float",
+   "current_filtered": "float",
+   "cycles_running": "int",
+   "drv8301_faults": "int",
+   "duty": "float",
+   "fault": "mc_fault_code",
+   "gate_driver_voltage": "float",
+   "info_argn": "int",
+   "info_args": "float",
+   "motor": "uint8_t",
+   "rpm": "float",
+   "tacho": "int",
+   "temperature": "float",
+   "tim_current_samp": "int",
+   "tim_top": "int",
+   "tim_val_samp": "int",
+   "voltage": "float"
+  },
+  "gnss_data": {
+   "dd": "int8_t",
+   "hdop": "float",
+   "height": "float",
+   "last_update": "systime_t",
+   "lat": "double",
+   "lon": "double",
+   "mo": "int8_t",
+   "ms_today": "int32_t",
+   "speed": "float",
+   "yy": "int16_t"
+  },
+  "imu_config": {
+   "accel_confidence_decay": "float",
+   "accel_lowpass_filter_x": "float",
+   "accel_lowpass_filter_y": "float",
+   "accel_lowpass_filter_z": "float",
+   "accel_offsets": "float",
+   "filter": "IMU_FILTER",
+   "gyro_lowpass_filter": "float",
+   "gyro_offsets": "float",
+   "madgwick_beta": "float",
+   "mahony_ki": "float",
+   "mahony_kp": "float",
+   "mode": "AHRS_MODE",
+   "rot_pitch": "float",
+   "rot_roll": "float",
+   "rot_yaw": "float",
+   "sample_rate_hz": "int",
+   "type": "IMU_TYPE",
+   "use_magnetometer": "bool"
+  },
+  "io_board_adc_values": {
+   "adc_voltages": "float",
+   "id": "int",
+   "rx_time": "systime_t"
+  },
+  "io_board_digial_inputs": {
+   "id": "int",
+   "inputs": "uint64_t",
+   "rx_time": "systime_t"
+  },
+  "mc_configuration": {
+   "bms": "bms_config",
+   "cc_gain": "float",
+   "cc_min_current": "float",
+   "cc_ramp_step_max": "float",
+   "cc_startup_boost_duty": "float",
+   "comm_mode": "mc_comm_mode",
+   "crc": "uint16_t",
+   "foc_cc_decoupling": "mc_foc_cc_decoupling_mode",
+   "foc_control_sample_mode": "mc_foc_control_sample_mode",
+   "foc_current_filter_const": "float",
+   "foc_current_ki": "float",
+   "foc_current_kp": "float",
+   "foc_current_sample_mode": "mc_foc_current_sample_mode",
+   "foc_dt_us": "float",
+   "foc_duty_dowmramp_ki": "float",
+   "foc_duty_dowmramp_kp": "float",
+   "foc_encoder_inverted": "bool",
+   "foc_encoder_offset": "float",
+   "foc_encoder_ratio": "float",
+   "foc_f_zv": "float",
+   "foc_fw_backoff": "float",
+   "foc_fw_current_max": "float",
+   "foc_fw_duty_start": "float",
+   "foc_fw_q_current_factor": "float",
+   "foc_fw_ramp_time": "float",
+   "foc_hall_interp_erpm": "float",
+   "foc_hall_table": "uint8_t",
+   "foc_hfi_amb_current": "float",
+   "foc_hfi_amb_mode": "mc_foc_hfi_amb_mode",
+   "foc_hfi_amb_tres": "uint8_t",
+   "foc_hfi_gain": "float",
+   "foc_hfi_hyst": "float",
+   "foc_hfi_max_err": "float",
+   "foc_hfi_obs_ovr_sec": "float",
+   "foc_hfi_reset_erpm": "float",
+   "foc_hfi_samples": "foc_hfi_samples",
+   "foc_hfi_start_samples": "uint16_t",
+   "foc_hfi_voltage_max": "float",
+   "foc_hfi_voltage_run": "float",
+   "foc_hfi_voltage_start": "float",
+   "foc_mag_vd_max": "float",
+   "foc_motor_flux_linkage": "float",
+   "foc_motor_l": "float",
+   "foc_motor_ld_lq_diff": "float",
+   "foc_motor_r": "float",
+   "foc_mtpa_mode": "MTPA_MODE",
+   "foc_observer_gain": "float",
+   "foc_observer_gain_slow": "float",
+   "foc_observer_offset": "float",
+   "foc_observer_type": "mc_foc_observer_type",
+   "foc_offsets_cal_mode": "uint8_t",
+   "foc_offsets_current": "float",
+   "foc_offsets_voltage": "float",
+   "foc_offsets_voltage_undriven": "float",
+   "foc_openloop_rpm": "float",
+   "foc_openloop_rpm_low": "float",
+   "foc_overmod_factor": "float",
+   "foc_phase_filter_disable_fault": "bool",
+   "foc_phase_filter_enable": "bool",
+   "foc_phase_filter_max_erpm": "float",
+   "foc_pll_ki": "float",
+   "foc_pll_kp": "float",
+   "foc_sat_comp": "float",
+   "foc_sat_comp_mode": "SAT_COMP_MODE",
+   "foc_sensor_mode": "mc_foc_sensor_mode",
+   "foc_short_ls_on_zero_duty": "bool",
+   "foc_sl_erpm": "float",
+   "foc_sl_erpm_hfi": "float",
+   "foc_sl_erpm_start": "float",
+   "foc_sl_openloop_boost_q": "float",
+   "foc_sl_openloop_hyst": "float",
+   "foc_sl_openloop_max_q": "float",
+   "foc_sl_openloop_time": "float",
+   "foc_sl_openloop_time_lock": "float",
+   "foc_sl_openloop_time_ramp": "float",
+   "foc_speed_soure": "FOC_SPEED_SRC",
+   "foc_start_curr_dec": "float",
+   "foc_start_curr_dec_rpm": "float",
+   "foc_temp_comp": "bool",
+   "foc_temp_comp_base_temp": "float",
+   "hall_sl_erpm": "float",
+   "hall_table": "int8_t",
+   "l_abs_current_max": "float",
+   "l_additional_faults": "uint8_t",
+   "l_battery_cut_end": "float",
+   "l_battery_cut_start": "float",
+   "l_battery_regen_cut_end": "float",
+   "l_battery_regen_cut_start": "float",
+   "l_current_max": "float",
+   "l_current_max_scale": "float",
+   "l_current_min": "float",
+   "l_current_min_scale": "float",
+   "l_duty_start": "float",
+   "l_erpm_start": "float",
+   "l_in_current_map_filter": "float",
+   "l_in_current_map_start": "float",
+   "l_in_current_max": "float",
+   "l_in_current_min": "float",
+   "l_max_duty": "float",
+   "l_max_erpm": "float",
+   "l_max_erpm_fbrake": "float",
+   "l_max_erpm_fbrake_cc": "float",
+   "l_max_vin": "float",
+   "l_min_duty": "float",
+   "l_min_erpm": "float",
+   "l_min_vin": "float",
+   "l_slow_abs_current": "bool",
+   "l_temp_accel_dec": "float",
+   "l_temp_fet_end": "float",
+   "l_temp_fet_start": "float",
+   "l_temp_motor_end": "float",
+   "l_temp_motor_start": "float",
+   "l_watt_max": "float",
+   "l_watt_min": "float",
+   "lo_current_max": "float",
+   "lo_current_min": "float",
+   "lo_in_current_max": "float",
+   "lo_in_current_min": "float",
+   "m_batt_filter_const": "int",
+   "m_bldc_f_sw_max": "float",
+   "m_bldc_f_sw_min": "float",
+   "m_current_backoff_gain": "float",
+   "m_dc_f_sw": "float",
+   "m_drv8301_oc_adj": "int",
+   "m_drv8301_oc_mode": "drv8301_oc_mode",
+   "m_duty_ramp_step": "float",
+   "m_encoder_cos_amp": "float",
+   "m_encoder_cos_offset": "float",
+   "m_encoder_counts": "uint32_t",
+   "m_encoder_sin_amp": "float",
+   "m_encoder_sin_offset": "float",
+   "m_encoder_sincos_filter_constant": "float",
+   "m_encoder_sincos_phase_correction": "float",
+   "m_fault_stop_time_ms": "int32_t",
+   "m_hall_extra_samples": "int",
+   "m_invert_direction": "bool",
+   "m_motor_temp_sens_type": "temp_sensor_type",
+   "m_ntc_motor_beta": "float",
+   "m_ntcx_ptcx_res": "float",
+   "m_ntcx_ptcx_temp_base": "float",
+   "m_out_aux_mode": "out_aux_mode",
+   "m_ptc_motor_coeff": "float",
+   "m_sensor_port_mode": "sensor_port_mode",
+   "motor_type": "mc_motor_type",
+   "p_pid_ang_div": "float",
+   "p_pid_gain_dec_angle": "float",
+   "p_pid_kd": "float",
+   "p_pid_kd_filter": "float",
+   "p_pid_kd_proc": "float",
+   "p_pid_ki": "float",
+   "p_pid_kp": "float",
+   "p_pid_offset": "float",
+   "pwm_mode": "mc_pwm_mode",
+   "s_pid_allow_braking": "bool",
+   "s_pid_kd": "float",
+   "s_pid_kd_filter": "float",
+   "s_pid_ki": "float",
+   "s_pid_kp": "float",
+   "s_pid_min_erpm": "float",
+   "s_pid_ramp_erpms_s": "float",
+   "s_pid_speed_source": "S_PID_SPEED_SRC",
+   "sensor_mode": "mc_sensor_mode",
+   "si_battery_ah": "float",
+   "si_battery_cells": "int",
+   "si_battery_type": "BATTERY_TYPE",
+   "si_gear_ratio": "float",
+   "si_motor_nl_current": "float",
+   "si_motor_poles": "uint8_t",
+   "si_wheel_diameter": "float",
+   "sl_bemf_coupling_k": "float",
+   "sl_cycle_int_limit": "float",
+   "sl_cycle_int_rpm_br": "float",
+   "sl_max_fullbreak_current_dir_change": "float",
+   "sl_min_erpm": "float",
+   "sl_min_erpm_cycle_int_limit": "float",
+   "sl_phase_advance_at_br": "float",
+   "sp_pid_loop_rate": "PID_RATE"
+  },
+  "mc_rpm_dep_struct": {
+   "comm_time_sum": "float",
+   "comm_time_sum_min_rpm": "float",
+   "comms": "int32_t",
+   "cycle_int_limit": "float",
+   "cycle_int_limit_max": "float",
+   "cycle_int_limit_running": "float",
+   "time_at_comm": "float"
+  },
+  "mc_values": {
+   "amp_hours": "float",
+   "amp_hours_charged": "float",
+   "current_in": "float",
+   "current_motor": "float",
+   "duty_now": "float",
+   "fault_code": "mc_fault_code",
+   "id": "float",
+   "iq": "float",
+   "position": "float",
+   "rpm": "float",
+   "tachometer": "int",
+   "tachometer_abs": "int",
+   "temp_mos": "float",
+   "temp_mos_1": "float",
+   "temp_mos_2": "float",
+   "temp_mos_3": "float",
+   "temp_motor": "float",
+   "v_in": "float",
+   "vd": "float",
+   "vesc_id": "int",
+   "vq": "float",
+   "watt_hours": "float",
+   "watt_hours_charged": "float"
+  },
+  "mote_state": {
+   "bt_c": "bool",
+   "bt_push": "bool",
+   "bt_z": "bool",
+   "is_rev": "bool",
+   "js_x": "uint8_t",
+   "js_y": "uint8_t",
+   "rev_has_state": "bool",
+   "vbat": "float"
+  },
+  "nrf_config": {
+   "crc_type": "NRF_CRC",
+   "power": "NRF_POWER",
+   "retry_delay": "NRF_RETR_DELAY",
+   "send_crc_ack": "bool",
+   "speed": "NRF_SPEED"
+  },
+  "pas_config": {
+   "ctrl_type": "pas_control_type",
+   "current_scaling": "float",
+   "invert_pedal_direction": "bool",
+   "magnets": "uint8_t",
+   "pedal_rpm_end": "float",
+   "pedal_rpm_start": "float",
+   "ramp_time_neg": "float",
+   "ramp_time_pos": "float",
+   "sensor_type": "pas_sensor_type",
+   "update_rate_hz": "uint32_t",
+   "use_filter": "bool"
+  },
+  "ppm_config": {
+   "ctrl_type": "ppm_control_type",
+   "hyst": "float",
+   "max_erpm_for_dir": "float",
+   "median_filter": "bool",
+   "multi_esc": "bool",
+   "pid_max_erpm": "float",
+   "pulse_center": "float",
+   "pulse_end": "float",
+   "pulse_start": "float",
+   "ramp_time_neg": "float",
+   "ramp_time_pos": "float",
+   "safe_start": "SAFE_START_MODE",
+   "smart_rev_max_duty": "float",
+   "smart_rev_ramp_time": "float",
+   "tc": "bool",
+   "tc_max_diff": "float",
+   "throttle_exp": "float",
+   "throttle_exp_brake": "float",
+   "throttle_exp_mode": "thr_exp_mode"
+  },
+  "psw_status": {
+   "id": "int",
+   "is_dsc_on": "bool",
+   "is_out_on": "bool",
+   "is_pch_on": "bool",
+   "rx_time": "systime_t",
+   "temp": "float",
+   "v_in": "float",
+   "v_out": "float"
+  },
+  "setup_stats": {
+   "current_sum": "double",
+   "max_current": "float",
+   "max_power": "float",
+   "max_speed": "float",
+   "max_temp_mos": "float",
+   "max_temp_motor": "float",
+   "power_sum": "double",
+   "samples": "double",
+   "speed_sum": "double",
+   "temp_mos_sum": "double",
+   "temp_motor_sum": "double",
+   "time_start": "systime_t"
+  },
+  "setup_values": {
+   "ah_charge_tot": "float",
+   "ah_tot": "float",
+   "current_in_tot": "float",
+   "current_tot": "float",
+   "num_vescs": "uint8_t",
+   "wh_charge_tot": "float",
+   "wh_tot": "float"
+  }
+ }
+}
