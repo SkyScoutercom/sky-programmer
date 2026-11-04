@@ -30,14 +30,14 @@ Pick a value that doesn't matter on the bench.
 | 12 | `sky get l_temp_fet_start` | 84 |
 | 13 | Power-cycle, then repeat 12 | Still 84, so it reached flash |
 | 14 | `sky restore <the backup from step 9>` | One field changes back; verified |
-| 15 | Run `sky status`, then the script with `sky start` | The script runs as before |
+| 15 | `sky status`, wait a few seconds, then `sky start` | The script stays paused after `sky status`, and runs as before after `sky start` |
 
 ## C. Safety behaviour on the real board
 
 | # | Action | Expect |
 |---|---|---|
 | 16 | Turn the motor by hand fast during `sky set l_temp_fet_start=84 --dry-run` | Refused if above about 200 erpm |
-| 17 | `sky stop` with a script running, then check in `sky repl -e ":ctxs"` | Script paused |
+| 17 | `sky stop` with a script running, then watch something it visibly does (servo, printed output) | It stops; `sky status` doesn't restart it |
 | 18 | With a script that uses `conf-set` running: power-cycle, `sky backup` before it changes anything, then `sky set ...` | Reports the script's changes as drift |
 | 19 | Unplug USB during `sky monitor` | Clear communication error, no hang |
 
@@ -50,5 +50,8 @@ Do this with the engine stopped, since FOC start-up calibration drives the phase
 3. Check with `sky status`, then power-cycle and check again.
 4. Go back with `sky set motor_type=BLDC`.
 
-Please send back any step that didn't match, with its output. Steps 6, 7, 11 and 17 test assumptions the simulated
-board can't confirm.
+Please send back any step that didn't match, with its output. Steps 6, 7, 11, 13, 15 and 17 test assumptions the
+simulated board can't confirm.
+
+**Don't test the boot-hang values on a real board.** There's no need: the app refuses them, and recovering takes SWD
+or the HALL2 jumper.

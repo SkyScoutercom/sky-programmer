@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import urllib.request
+import xml.etree.ElementTree as ET
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "sky_programmer", "layouts")
 
@@ -19,6 +20,27 @@ def fetch(branch, path):
     url = f"https://raw.githubusercontent.com/vedderb/bldc/{branch}/{path}"
     with urllib.request.urlopen(url, timeout=20) as r:
         return r.read().decode("utf-8", "replace")
+
+
+def fetch_tool(major, minor):
+    url = f"https://raw.githubusercontent.com/vedderb/vesc_tool/master/res/config/{major}.{minor:02d}/parameters_mcconf.xml"
+    with urllib.request.urlopen(url, timeout=20) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def tool_limits(xml_text):
+    """{field: [min, max]} of the numeric motor-config fields, from VESC Tool's own parameter file."""
+    out = {}
+    for e in ET.fromstring(xml_text).find("Params"):
+        d = {c.tag: c.text for c in e}
+        lo, hi = d.get("minDouble") or d.get("minInt"), d.get("maxDouble") or d.get("maxInt")
+        if lo is not None and hi is not None and d.get("type") in ("1", "2"):
+            name = e.tag
+            if "__" in name:
+                base, idx = name.rsplit("__", 1)
+                name = f"{base}[{idx}]"
+            out[name] = [float(lo), float(hi)]
+    return out
 
 
 def serialize_ops(src, func):
@@ -68,9 +90,10 @@ def enums_and_structs(dt):
     return enums, structs
 
 
-def build_layout(branch):
+def build_layout(branch, major, minor):
     cg, cgh, dt = fetch(branch, "confgenerator.c"), fetch(branch, "confgenerator.h"), fetch(branch, "datatypes.h")
     enums, structs = enums_and_structs(dt)
+    ext = fetch(branch, "lispBM/lispif_vesc_extensions.c")
     return {
         "branch": branch,
         "signatures": {k: int(v) for k, v in re.findall(r"#define\s+(\w+_SIGNATURE)\s+(\d+)", cgh)},
@@ -78,15 +101,17 @@ def build_layout(branch):
         "appconf_ops": serialize_ops(cg, "confgenerator_serialize_appconf"),
         "enums": {name: {str(k): v for k, v in vals.items()} for name, vals in enums.items()},
         "structs": structs,
+        "mc_limits": tool_limits(fetch_tool(major, minor)),
+        "lisp_extensions": sorted(set(re.findall(r'lbm_add_extension\("([^"]+)"', ext))),
     }
 
 
 def main():
     major, minor = int(sys.argv[1]), int(sys.argv[2])
-    lay = build_layout(f"release_{major}_{minor:02d}")
+    lay = build_layout(f"release_{major}_{minor:02d}", major, minor)
     path = os.path.join(OUT, f"fw_layout_{major}_{minor:02d}.json")
     with open(path, "w") as f:
-        json.dump(lay, f)
+        json.dump(lay, f, indent=1)
     print("wrote", path)
 
 

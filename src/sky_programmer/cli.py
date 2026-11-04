@@ -17,6 +17,19 @@ from .programmer import IDLE_MAX_ERPM, Programmer
 
 ENGINE_PROMPT = "Engine stopped, propeller clear, supply stable? Type YES to write: "
 
+# The two blues of the SkyScouter logo (docs/logo.png).
+LOGO_LIGHT, LOGO_DARK = "38;2;2;149;224", "38;2;0;85;142"
+
+
+def _banner() -> None:
+    """Show the brand in a real terminal only, so piped output and logs stay plain. Honours NO_COLOR."""
+    if not sys.stdout.isatty():
+        return
+    if os.environ.get("NO_COLOR"):
+        print(APP_NAME)
+    else:
+        print(f"\033[1;{LOGO_LIGHT}mS\033[1;{LOGO_DARK}mK\033[0m  {APP_NAME} {__version__}  |  SkyScouter")
+
 
 def _confirm(args, prompt=ENGINE_PROMPT) -> None:
     """The operator states the engine is stopped: the board can't see it behind the starter relay."""
@@ -24,7 +37,11 @@ def _confirm(args, prompt=ENGINE_PROMPT) -> None:
         return
     if not sys.stdin.isatty():
         raise SafetyRefusal("this command needs --engine-stopped when it is not run interactively.")
-    if input(prompt).strip() != "YES":
+    try:
+        answer = input(prompt)
+    except EOFError:
+        answer = ""
+    if answer.strip() != "YES":
         raise SafetyRefusal("cancelled. Nothing was written.")
 
 
@@ -48,12 +65,15 @@ def _commit(prog, plan, args) -> int:
     for k, (want, got) in res["limited"].items():
         print(f"Limited by firmware: {k} asked {config.show(lay, MC_ROOT, k, want)}, "
               f"stored {config.show(lay, MC_ROOT, k, got)}")
-    print("Written and verified by read-back.")
+    print("Written. The board's working copy reads back correct.")
+    print("The firmware doesn't report whether its flash save worked, so power-cycle and check with `sky get`")
+    print("to confirm a change you depend on.")
     print("The script is paused. Run `sky start` or power-cycle to run it again.")
     return 0
 
 
 def cmd_status(prog, args) -> int:
+    _banner()
     ident = prog.identify()
     print(f"Board:    {ident['hw']}")
     print(f"Firmware: {ident['fw']}" + (f" (test build {ident['test_version']})" if ident["test_version"] else ""))
@@ -62,8 +82,6 @@ def cmd_status(prog, args) -> int:
     print(f"Bus:      {v['v_in']} V    Motor: {v['erpm']} erpm, {v['current_motor']} A, duty {v['duty']}")
     print(f"Temps:    MOSFET {v['temp_fet']} C, motor {v['temp_motor']} C")
     print(f"Fault:    {prog.fault_name(v['fault_code'])}")
-    s = prog.lisp_stats()
-    print(f"Script:   CPU {s['cpu']} %, heap {s['heap']} %, memory {s['mem']} %")
     try:
         lay = prog.layout()
         conf = prog.read_conf(MC_ROOT)
@@ -123,7 +141,8 @@ def cmd_set(prog, args) -> int:
         k, v = a.split("=", 1)
         changes[k.strip()] = v
     prog.require_idle(prog.read_conf(MC_ROOT))
-    plan = prog.plan_set(changes, accept_drift=args.accept_drift, allow_default_foc=args.allow_default_foc_params)
+    plan = prog.plan_set(changes, accept_drift=args.accept_drift, allow_default_foc=args.allow_default_foc_params,
+                         allow_risky=args.allow_risky)
     if not plan.diff:
         print("Already set: nothing to write, so flash is left alone.")
         return 0
@@ -160,7 +179,7 @@ def cmd_restore(prog, args) -> int:
     doc = backup.load(args.file)
     prog.require_idle(prog.read_conf(MC_ROOT))
     plan = prog.plan_restore(doc, allow_other_board=args.allow_other_board,
-                             allow_default_foc=args.allow_default_foc_params)
+                             allow_default_foc=args.allow_default_foc_params, allow_risky=args.allow_risky)
     if not plan.diff:
         print("The board already matches this backup, so nothing was written.")
         return 0
@@ -175,12 +194,15 @@ def cmd_stop(prog, args) -> int:
             "its throttle and kill control and leaves the servo where it is. Kill the engine with the RC switch. "
             "--force overrides this.")
     paused = prog.stop()
-    print("Script paused, motor released." if paused else "No script running, motor released.")
+    print("Script paused, motor released." if paused else "No script on the board, motor released.")
     print("Note: C libraries' own threads keep running. This does not stop the engine.")
     return 0
 
 
 def cmd_start(prog, args) -> int:
+    v = prog.values()
+    if abs(v["erpm"]) > IDLE_MAX_ERPM:
+        raise SafetyRefusal(f"the motor is turning ({v['erpm']} erpm). Stop it before restarting the script.")
     _confirm(args, "This runs the script stored on the board, which may move the motor or servo. Type YES: ")
     print("Script started." if prog.start() else "Could not start: is a script stored on the board?")
     return 0
@@ -193,11 +215,17 @@ def cmd_term(prog, args) -> int:
 
 
 def cmd_repl(prog, args) -> int:
+    resume_note = "Note: evaluating an expression also resumes a script paused by `sky stop` or `sky set`."
     if args.expr:
+        if not args.expr.strip().startswith(":"):
+            print(resume_note, file=sys.stderr)
         for text in prog.repl(args.expr, allow_motor=args.allow_motor) or ["(no reply)"]:
             print(text)
         return 0
-    print("LispBM REPL. Commands that write flash are blocked. Ctrl-D to leave.")
+    _banner()
+    print("LispBM REPL. Words that write flash, reach other boards or move the motor are blocked. Ctrl-D to leave.")
+    print("Functions your own script defines aren't checked.")
+    print(resume_note)
     while True:
         try:
             line = input("sky> ")
@@ -230,6 +258,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--dry-run", action="store_true", help="show the planned changes and write nothing")
         sp.add_argument("--allow-default-foc-params", action="store_true",
                         help="allow FOC with parameters that were never measured on this motor")
+        sp.add_argument("--allow-risky", action="store_true",
+                        help="allow changes that remove protection or go above the board's rating")
 
     add("status", cmd_status, "board, firmware, live values, faults")
     sp = add("monitor", cmd_monitor, "live values and board messages")

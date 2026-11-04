@@ -9,7 +9,6 @@ import struct
 
 COMM_FW_VERSION = 0
 COMM_GET_VALUES = 4
-COMM_SET_CURRENT = 6
 COMM_SET_MCCONF = 13
 COMM_GET_MCCONF = 14
 COMM_GET_MCCONF_DEFAULT = 15
@@ -17,9 +16,9 @@ COMM_GET_APPCONF = 17
 COMM_TERMINAL_CMD = 20
 COMM_PRINT = 21
 COMM_LISP_SET_RUNNING = 133
-COMM_LISP_GET_STATS = 134
 COMM_LISP_PRINT = 135
 COMM_LISP_REPL_CMD = 138
+COMM_MOTOR_ESTOP = 159
 
 PRINT_COMMANDS = (COMM_PRINT, COMM_LISP_PRINT)
 
@@ -162,9 +161,3 @@ def parse_values(pl: bytes) -> dict:
         "tachometer_abs": v.i32(),
         "fault_code": v.u8(),
     }
-
-
-def parse_lisp_stats(pl: bytes) -> dict:
-    """COMM_LISP_GET_STATS reply payload -> the three leading usage figures (percent)."""
-    v = Reader(pl[1:])
-    return {"cpu": v.i16() / 100, "heap": v.i16() / 100, "mem": v.i16() / 100}

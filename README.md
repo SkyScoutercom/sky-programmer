@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" alt="SkyScouter logo" width="240"></p>
+
 # SKY programmer
 
 SkyScouter's terminal tool for reading and configuring VESC motor controllers.
@@ -30,7 +32,7 @@ if more than one board is plugged in.
 | `sky restore <file>` | Write a backup's motor config back |
 | `sky stop` / `sky start` | Pause the script and release the motor / run the stored script |
 | `sky term <command>` | Read-only firmware terminal commands, e.g. `sky term faults` |
-| `sky repl [-e expr]` | LispBM console; commands that write flash are blocked |
+| `sky repl [-e expr]` | LispBM console; words that write flash, reach other boards or move the motor are blocked |
 
 ### Changing from BLDC to FOC
 
@@ -49,7 +51,13 @@ sky set motor_type=FOC foc_motor_r=0.0081 foc_motor_l=4.97e-6 foc_motor_flux_lin
 
 Those example numbers were measured on a Mini board, so check them for yours.
 
-A write leaves the script paused. Run `sky start` or power-cycle to run it again.
+A write leaves the script paused. Run `sky start` or power-cycle to run it again. A REPL expression also resumes it.
+
+The first write needs a baseline, so run `sky backup` first, ideally just after power-up with the engine stopped.
+The read-back confirms the board's working copy, so power-cycle and check with `sky get` to prove the save to flash.
+
+Changes that remove protection or go above the board's rating need `--allow-risky`. The ratings are in
+`BOARD_RATINGS` in `config.py`. Values VESC Tool would refuse are never accepted.
 
 Exit codes: `0` done, `2` refused (nothing was written), `3` communication problem, `4` the write did
 not verify.
@@ -57,7 +65,8 @@ not verify.
 ## How the board is protected
 
 See **[SAFETY.md](SAFETY.md)**. In short: firmware and bootloader commands can't be sent at all, and every
-config write is checked, backed up, written once, read back and rolled back if it comes out wrong.
+config write is checked, backed up, written once, read back and rolled back if it comes out wrong. Values known to
+hang a board at boot are refused with no override.
 
 ## Roadmap
 

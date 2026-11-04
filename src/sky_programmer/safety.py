@@ -4,12 +4,15 @@ It is an allow-list, so a command nobody has reviewed is refused by default. SAF
 each rule with the firmware code behind it.
 
 This protects against the app and its operator making mistakes. It is not a security boundary: a
-determined user can still get around the REPL word filter, for example by building a symbol name
-at runtime. The commands that can kill a board's firmware are refused outright.
+function defined by a script on the board runs whatever that script says, and the REPL can't see
+inside it. The packets that can kill a board's firmware are refused outright.
 """
 from __future__ import annotations
 
+import json
 import re
+from functools import lru_cache
+from importlib import resources
 
 from . import protocol as p
 from .errors import SafetyRefusal
@@ -20,11 +23,10 @@ _READ_ONLY = {
     p.COMM_GET_MCCONF: "GET_MCCONF",
     p.COMM_GET_MCCONF_DEFAULT: "GET_MCCONF_DEFAULT",
     p.COMM_GET_APPCONF: "GET_APPCONF",
-    p.COMM_LISP_GET_STATS: "LISP_GET_STATS",
 }
 
 _CONDITIONAL = {
-    p.COMM_SET_CURRENT: "SET_CURRENT (zero only)",
+    p.COMM_MOTOR_ESTOP: "MOTOR_ESTOP (one fixed packet)",
     p.COMM_SET_MCCONF: "SET_MCCONF (only through the verified write path)",
     p.COMM_TERMINAL_CMD: "TERMINAL_CMD (read-only commands only)",
     p.COMM_LISP_SET_RUNNING: "LISP_SET_RUNNING",
@@ -74,33 +76,59 @@ TERMINAL_READ_ONLY = {
     "fw_info", "tim",
 }  # fmt: skip
 
-# Words a REPL line may not contain. Flash and persistence first, then the ways to run hidden code.
-REPL_FORBIDDEN = {
-    "conf-store", "store-backup", "conf-restore-mc", "conf-restore-app",
-    "load-native-lib", "unload-native-lib", "shutdown", "can-cmd", "canmsg-send",
-    "read-eval", "read-eval-program", "import",
-    "lbm-erase", "lbm-write", "lbm-run", "qml-erase", "qml-write",
-}  # fmt: skip
-REPL_FORBIDDEN_PREFIXES = ("fw-", "bm-")
+# COMM_MOTOR_ESTOP releases the motor and ignores input for this long: 1000 ms, big-endian.
+MOTOR_RELEASE_PACKET = bytes([p.COMM_MOTOR_ESTOP, 0x03, 0xE8])
 
-# REPL words that can move the motor or change limits in RAM: refused unless asked for.
+# LispBM words that read or print, reviewed against the firmware 7.00 list.
+REPL_READ_PREFIXES = ("get-", "canget-", "gnss-", "raw-", "phase-", "ioboard-get-", "encoder-")
+REPL_READ = {
+    "print", "puts", "crc16", "crc32", "bits-dec-int", "bits-enc-int", "buf-resize", "rand", "rand-max", "secs-since",
+    "systime", "sysinfo", "stats", "conf-get", "conf-get-limits", "eeprom-read-f", "eeprom-read-i", "gpio-read",
+    "observer-error", "pos-pid-error", "pos-pid-now", "icu-period", "icu-width", "app-is-output-disabled",
+    "app-adc-range-ok", "app-pas-get-rpm", "can-local-id", "can-msg-age", "shutdown-btn-read", "uavcan-last-rawcmd",
+    "uavcan-last-rpmcmd", "prof-result", "throttle-curve",
+}  # fmt: skip
+
+# Words that can move the motor or servo, or change limits in RAM: `sky repl --allow-motor` only.
 REPL_MOTOR = {
     "set-current", "set-current-rel", "set-duty", "set-rpm", "set-pos", "set-brake", "set-brake-rel",
     "set-handbrake", "set-handbrake-rel", "set-kill-sw", "set-servo", "set-aux", "foc-openloop",
-    "foc-openloop-phase", "foc-beep",
-    "foc-play-tone", "foc-play-samples", "conf-set", "conf-measure-res", "conf-measure-ind",
-    "conf-detect-foc", "conf-detect-hall", "conf-detect-lambda-enc", "conf-dc-cal", "conf-dc-cal-set",
-    "conf-enc-sincos", "conf-remap-as504x", "conf-remap-hall", "conf-set-pid-offset", "app-adc-override",
-    "app-ppm-override", "pwm-set-duty",
+    "foc-openloop-phase", "foc-beep", "foc-play-tone", "foc-play-samples", "foc-play-stop", "conf-set",
+    "conf-measure-res", "conf-measure-ind", "conf-detect-foc", "conf-detect-hall", "conf-detect-lambda-enc",
+    "conf-dc-cal", "conf-dc-cal-set", "app-adc-override", "app-ppm-override", "app-adc-detach", "app-ppm-detach",
+    "app-disable-output", "pwm-start", "pwm-stop", "pwm-set-duty", "gpio-write", "pos-pid-set", "timeout-reset",
+    "override-temp-motor", "override-speed",
 }  # fmt: skip
 
-# REPL meta commands that restart or resume a stored script: `sky start` is the way to do that.
-REPL_META_FORBIDDEN = (":reset", ":continue")
+# Core language words that evaluate text or write Lisp storage. They aren't in the firmware's extension list.
+REPL_CORE_FORBIDDEN = {
+    "read", "read-program", "read-eval", "read-eval-program", "eval", "eval-program", "move-to-flash", "import",
+    "load-native-lib", "unload-native-lib", "fw-erase", "fw-write", "fw-reboot", "lbm-erase", "lbm-write", "lbm-run",
+    "qml-erase", "qml-write",
+}  # fmt: skip
+REPL_FORBIDDEN_PREFIXES = ("fw-", "bm-", "@")
+
+# Meta commands that only report. The rest pause, resume or restart the script, or undefine symbols.
+REPL_META_ALLOWED = {":help", ":info", ":ctxs", ":verb"}
 
 # The firmware's REPL truncates long input, and a truncated expression can mean something else.
 REPL_MAX_LEN = 300
 
-_TOKEN = re.compile(r"[^\s()\[\]'`,\"]+")
+_TOKEN = re.compile(r"[^\s()\[\]{}'`,\"]+")
+
+
+@lru_cache(maxsize=1)
+def firmware_words() -> frozenset:
+    """Every LispBM word the supported firmware adds. One not reviewed above is refused."""
+    words = set()
+    for entry in resources.files("sky_programmer.layouts").iterdir():
+        if entry.name.endswith(".json"):
+            words |= set(json.loads(entry.read_text())["lisp_extensions"])
+    return frozenset(words)
+
+
+def _repl_word_is_read_only(word: str) -> bool:
+    return word in REPL_READ or word.startswith(REPL_READ_PREFIXES)
 
 
 def check_repl(text: str, *, allow_motor: bool = False) -> None:
@@ -108,15 +136,25 @@ def check_repl(text: str, *, allow_motor: bool = False) -> None:
     if len(text) > REPL_MAX_LEN:
         raise SafetyRefusal(f"REPL input is {len(text)} characters; the firmware truncates long input. "
                             f"Keep it under {REPL_MAX_LEN} and split it into several lines.")
-    if line.lower().startswith(REPL_META_FORBIDDEN):
-        raise SafetyRefusal(f"{line.split()[0]} restarts or resumes the stored script. Use `sky start`.")
+    if line.startswith(":"):
+        word = line.split()[0].lower()
+        if word not in REPL_META_ALLOWED:
+            raise SafetyRefusal(f"{word} can freeze, resume or change the running script. "
+                                f"Allowed: {', '.join(sorted(REPL_META_ALLOWED))}. Use `sky stop` and `sky start`.")
+        return
+    if ";" in text or "\\" in text:
+        # LispBM ends a symbol at ';' and strings can hide text behind escapes, so `(conf-store;x` would slip past.
+        raise SafetyRefusal("comments and backslashes aren't allowed in the REPL.")
     for word in (t.lower() for t in _TOKEN.findall(text)):
-        if word in REPL_FORBIDDEN or word.startswith(REPL_FORBIDDEN_PREFIXES):
-            raise SafetyRefusal(f"`{word}` is blocked in the REPL because it writes flash or runs hidden code. "
-                                "Use `sky set` and `sky restore` for config.")
-        if word in REPL_MOTOR and not allow_motor:
-            raise SafetyRefusal(f"`{word}` can move the motor or change limits. "
-                                "Run `sky repl --allow-motor` if you mean it.")
+        if word in REPL_CORE_FORBIDDEN or word.startswith(REPL_FORBIDDEN_PREFIXES):
+            raise SafetyRefusal(f"`{word}` is blocked in the REPL because it writes flash or runs hidden code.")
+        if word in REPL_MOTOR:
+            if not allow_motor:
+                raise SafetyRefusal(f"`{word}` can move the motor or servo, or change limits. "
+                                    "Run `sky repl --allow-motor` if you mean it.")
+        elif word in firmware_words() and not _repl_word_is_read_only(word):
+            raise SafetyRefusal(f"`{word}` is blocked in the REPL because it can write flash, reach other boards "
+                                "or change the board's state.")
 
 
 def check_terminal(text: str) -> None:
@@ -142,9 +180,9 @@ def check_packet(payload: bytes, *, config_write: bool = False, repl_allow_motor
     elif cmd == p.COMM_SET_MCCONF:
         if not config_write:
             raise SafetyRefusal("config writes must go through the verified write path.")
-    elif cmd == p.COMM_SET_CURRENT:
-        if payload != bytes([p.COMM_SET_CURRENT, 0, 0, 0, 0]):
-            raise SafetyRefusal("only a zero-current command is allowed; it releases the motor.")
+    elif cmd == p.COMM_MOTOR_ESTOP:
+        if payload != MOTOR_RELEASE_PACKET:
+            raise SafetyRefusal("only the fixed motor-release packet is allowed.")
     elif cmd == p.COMM_LISP_SET_RUNNING:
         if payload[1:] not in (b"\x00", b"\x01"):
             raise SafetyRefusal("LISP_SET_RUNNING takes one byte, 0 or 1.")

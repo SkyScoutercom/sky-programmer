@@ -20,6 +20,40 @@ PROTECTED_PREFIXES = ("foc_offsets_",)
 IGNORED_IN_COMPARE = ("foc_offsets_",)
 
 
+# The firmware can change these itself on any write (commands_apply_mcconf_hw_limits). That isn't damage.
+FIRMWARE_ADJUSTED = {
+    "l_current_max_scale", "l_current_min_scale", "l_erpm_start", "foc_overmod_factor", "foc_f_zv",
+    "m_hall_extra_samples", "foc_sl_erpm_start", "l_slow_abs_current", "l_current_max", "l_current_min",
+    "foc_hfi_amb_current", "l_in_current_max", "l_in_current_min", "l_abs_current_max", "l_max_vin", "l_min_vin",
+    "l_max_erpm", "l_min_erpm", "l_min_duty", "l_max_duty", "l_temp_fet_start", "l_temp_fet_end",
+    "foc_current_filter_const",
+}  # fmt: skip
+
+# The PWM timer period comes from these, and a bad value hangs the boot before USB starts
+# (mcpwm_init -> do_dc_cal spins forever). Never overridable. Ranges are VESC Tool's.
+BOOT_CRITICAL = {"m_bldc_f_sw_min": (3000, 40000), "m_bldc_f_sw_max": (3000, 40000), "m_dc_f_sw": (3000, 25000)}
+
+# Valid values that remove protection or can overstress hardware: these need --allow-risky.
+RISKY_FIELDS = {
+    "m_drv8301_oc_mode": "gate-driver overcurrent protection",
+    "m_drv8301_oc_adj": "gate-driver overcurrent protection",
+    "foc_short_ls_on_zero_duty": "shorts the low-side FETs at zero duty",
+    "l_max_erpm_fbrake": "shorts the phases, with no current limit, at speed",
+    "l_max_erpm_fbrake_cc": "shorts the phases, with no current limit, at speed",
+    "l_temp_motor_start": "motor over-temperature protection",
+    "l_temp_motor_end": "motor over-temperature protection",
+}
+
+# The firmware's own limits sit far above these boards' ratings (300 A and 150 V on the 110100),
+# so these conservative ratings make going higher a deliberate choice.
+BOARD_RATINGS = {
+    "Flipsky_110_100": {"l_current_max": 120.0, "l_abs_current_max": 240.0, "l_max_vin": 110.0},
+    "Flipsky_60": {"l_current_max": 70.0, "l_abs_current_max": 140.0, "l_max_vin": 60.0},
+    "Flipsky_60_MK5": {"l_current_max": 70.0, "l_abs_current_max": 140.0, "l_max_vin": 60.0},
+}
+RATED_FIELDS = ("l_current_max", "l_abs_current_max", "l_max_vin")
+
+
 def _ignored(field: str) -> bool:
     return field.startswith(IGNORED_IN_COMPARE)
 
@@ -43,6 +77,7 @@ class Layout:
             if unknown:
                 raise SafetyRefusal(f"layout {self.branch} has unparsed {root} entries: {unknown[:3]}")
         self.fields = {root: {o[1]: o for o in ops if o[0] != "sig"} for root, ops in self.ops.items()}
+        self.mc_limits = data["mc_limits"]
 
     def size(self, root: str) -> int:
         return sum(SIZES[o[0]] for o in self.ops[root])
@@ -94,7 +129,10 @@ def decode(blob: bytes, layout: Layout, root: str) -> dict:
 
 def encode_value(kind: str, scale, val) -> bytes:
     if kind == "f32auto":
-        return p.enc_f32auto(val)
+        try:
+            return p.enc_f32auto(val)
+        except OverflowError:
+            raise SafetyRefusal(f"{val} is too large for this field.") from None
     if kind in ("f16", "f32"):
         fmt, lo, hi = (">h", -32768, 32767) if kind == "f16" else (">i", -(2**31), 2**31 - 1)
         scaled = int(round(val * scale))
@@ -169,16 +207,54 @@ def show(layout: Layout, root: str, field: str, val) -> str:
     return f"{val:.6g}" if isinstance(val, float) else str(val)
 
 
-def differences(before: dict, after: dict) -> dict:
-    """{field: (before, after)} for fields that really differ."""
+def differences(before: dict, after: dict, layout: Layout | None = None, root: str = MC_ROOT) -> dict:
+    """{field: (before, after)} for fields that really differ.
+
+    With a layout, a 16/32-bit scaled field may differ by one step, because the firmware truncates these when it
+    encodes them (buffer_append_float16), so such a value can read back one step lower without having changed.
+    """
     out = {}
     for k, a in before.items():
         b = after.get(k)
         if _ignored(k) or a == b:
             continue
-        if isinstance(a, float) and isinstance(b, float) and math.isclose(a, b, rel_tol=1e-6, abs_tol=1e-9):
-            continue
+        if isinstance(a, float) and isinstance(b, float):
+            if math.isclose(a, b, rel_tol=1e-6, abs_tol=1e-9):
+                continue
+            op = layout.fields[root].get(k) if layout else None
+            if op and op[0] in ("f16", "f32") and abs(a - b) <= 1.01 / op[2]:
+                continue
         out[k] = (a, b)
+    return out
+
+
+def range_problems(changed, after: dict, layout: Layout) -> list:
+    """Changed fields outside what VESC Tool itself accepts. Not overridable."""
+    out = []
+    for f in changed:
+        limit = layout.mc_limits.get(f)
+        if limit and not limit[0] <= after[f] <= limit[1]:
+            out.append(f"{f} = {after[f]:g} is outside its range, {limit[0]:g} to {limit[1]:g}")
+        names = layout.enum_of(MC_ROOT, f)
+        if names and str(after[f]) not in names:
+            out.append(f"{f} = {after[f]} is not a valid choice")
+    return out
+
+
+def risky_changes(changed, before: dict, after: dict, layout: Layout, hw: str) -> list:
+    """Why this valid change still needs a deliberate --allow-risky. Empty if it doesn't."""
+    out = []
+    ratings = BOARD_RATINGS.get(hw)
+    for f in changed:
+        if f in RISKY_FIELDS:
+            out.append(f"{f}: {RISKY_FIELDS[f]}")
+        elif f in RATED_FIELDS:
+            if after[f] > before[f] and ratings is None:
+                out.append(f"{f}: raising it on board `{hw}`, whose rating this app doesn't know")
+            elif ratings is not None and after[f] > ratings[f] and after[f] > before[f]:
+                out.append(f"{f}: {after[f]:g} is above this app's rating for {hw}, {ratings[f]:g}")
+        elif f not in layout.mc_limits and layout.field_type(MC_ROOT, f) != "bool" and not layout.enum_of(MC_ROOT, f):
+            out.append(f"{f}: this field has no known safe range")
     return out
 
 
@@ -188,8 +264,14 @@ def _rule(bad: bool, text: str):
 
 def motor_rule_violations(c: dict, layout: Layout) -> set:
     """Values no working setup uses. They catch typos and wizard damage (the flux = -2 case)."""
-    foc = layout.enum_of(MC_ROOT, "motor_type").get(str(c["motor_type"])) == "MOTOR_TYPE_FOC"
+    mode = layout.enum_of(MC_ROOT, "motor_type").get(str(c["motor_type"]))
+    foc = mode == "MOTOR_TYPE_FOC"
     out = []
+    # These hang the boot in the mode that uses them, so entering that mode with a bad value counts too.
+    active = {"MOTOR_TYPE_BLDC": ("m_bldc_f_sw_min", "m_bldc_f_sw_max"), "MOTOR_TYPE_DC": ("m_dc_f_sw",)}.get(mode, ())
+    for f in active:
+        lo, hi = BOOT_CRITICAL[f]
+        out += _rule(not lo <= c[f] <= hi, f"{f} must be {lo} to {hi} Hz, or the board can hang at boot")
     out += _rule(c["si_motor_poles"] <= 0 or c["si_motor_poles"] % 2, "si_motor_poles must be even and above 0")
     out += _rule(c["l_current_max"] <= 0, "l_current_max must be above 0")
     out += _rule(c["l_current_min"] > 0, "l_current_min must be 0 or negative")
