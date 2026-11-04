@@ -1,6 +1,7 @@
 """The desktop app against the simulated board: the real window, the real worker thread, no real dialogs."""
 import os
 import subprocess
+import sys
 import threading
 import time
 from importlib import resources
@@ -9,6 +10,8 @@ from pathlib import Path
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+if sys.version_info < (3, 12):
+    pytest.skip("the desktop app needs Python 3.12 or newer", allow_module_level=True)
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, Qt  # noqa: E402

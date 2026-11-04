@@ -21,6 +21,8 @@ if more than one board is plugged in.
 
 ## Desktop app
 
+It needs Python 3.12 or newer, because PySide6 crashes on older versions. The `sky` command works from Python 3.10.
+
 ```bash
 pipx install --force --editable '.[gui]'   # installs `sky` and `sky-gui`, running from this folder
 sky-gui --simulate                         # try it first: a simulated board, nothing touches hardware

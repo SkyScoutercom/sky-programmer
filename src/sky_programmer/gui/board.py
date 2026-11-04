@@ -36,7 +36,7 @@ class BoardThread(QThread):
     paused_changed = Signal(bool)  # whether this app has paused the script
     busy_changed = Signal(bool)
     message = Signal(str)
-    _job_done = Signal(int, object, object)
+    _job_done = Signal(int)  # only the job's number: see _finish
 
     def __init__(self, open_link: Callable, backup_dir, parent=None, assume_paused=()):
         super().__init__(parent)
@@ -44,6 +44,7 @@ class BoardThread(QThread):
         self._assume_paused = assume_paused  # boards this app paused earlier: reconnecting doesn't resume them
         self._jobs: queue.Queue = queue.Queue()
         self._callbacks: dict = {}
+        self._outcomes: dict = {}
         self._next_token = 0
         self._exclusive_token = None
         self._shutting_down = False
@@ -77,7 +78,13 @@ class BoardThread(QThread):
             self._shutting_down = True
             self._jobs.put(None)
 
-    def _dispatch(self, token, result, error) -> None:
+    def _finish(self, token: int, result, error) -> None:
+        """Results stay on the Python side, because Qt object signals don't count references to None reliably."""
+        self._outcomes[token] = (result, error)
+        self._job_done.emit(token)
+
+    def _dispatch(self, token: int) -> None:
+        result, error = self._outcomes.pop(token)
         on_ok, on_err = self._callbacks.pop(token, (None, None))
         if token == self._exclusive_token:  # before the callback, which may submit the next step
             self._exclusive_token = None
@@ -162,7 +169,7 @@ class BoardThread(QThread):
         except Exception as e:
             error = SkyError(f"unexpected problem: {e!r}")
         self._report_paused()
-        self._job_done.emit(job.token, result, error)
+        self._finish(job.token, result, error)
 
     def _report_paused(self) -> None:
         if self._prog.script_paused != self._paused:
@@ -179,4 +186,4 @@ class BoardThread(QThread):
                 except queue.Empty:
                     return
                 if job is not None:
-                    self._job_done.emit(job.token, None, CommsError("the board disconnected before this ran."))
+                    self._finish(job.token, None, CommsError("the board disconnected before this ran."))

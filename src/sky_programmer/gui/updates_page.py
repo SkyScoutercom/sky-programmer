@@ -19,17 +19,19 @@ from .. import gitops
 
 
 class _GitJob(QThread):
-    done = Signal(object, object)
+    done = Signal()  # the outcome stays on the Python side, as in BoardThread._finish
 
     def __init__(self, fn, parent):
         super().__init__(parent)
         self.fn = fn
+        self.result, self.error = None, None
 
     def run(self) -> None:
         try:
-            self.done.emit(self.fn(), None)
+            self.result = self.fn()
         except Exception as e:  # e.g. git isn't installed: the page must still say something
-            self.done.emit(None, e)
+            self.error = e
+        self.done.emit()
 
 
 class UpdatesPage(QWidget):
@@ -123,15 +125,15 @@ class UpdatesPage(QWidget):
         job = _GitJob(fn, self)
         self._job = job
 
-        def finished(result, error):
+        def finished():
             job.wait(5000)
             job.deleteLater()
             self._job = None
             self.win.sync_ui()
-            if error is not None:
-                self.output.setPlainText(f"Could not run git: {error}")
+            if job.error is not None:
+                self.output.setPlainText(f"Could not run git: {job.error}")
                 return
-            done(result)
+            done(job.result)
 
         job.done.connect(finished)
         job.start()
