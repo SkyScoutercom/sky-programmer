@@ -18,6 +18,8 @@ PAUSE_FAILED_AFTER_S = 1.5  # the firmware answers "no" at once if no script exi
 SETTLE_S = 0.5
 READBACK_TRIES = 5
 
+MONITOR_COLUMNS = ("t", "erpm", "duty", "motor_a", "input_a", "bus_v", "fet_c", "motor_c", "fault")
+
 
 @dataclass
 class Plan:
@@ -36,6 +38,8 @@ class Programmer:
     def __init__(self, link, backup_dir, say=print):
         self.link, self.backup_dir, self.say = link, backup_dir, say
         self._ident, self._layout = None, None
+        # What this app last did to the script. The board can't be asked: COMM_LISP_GET_STATS resumes a paused script.
+        self.script_paused = False
 
     # ---------------------------------------------------------------------- reading
     def identify(self) -> dict:
@@ -57,6 +61,11 @@ class Programmer:
             return self.layout().enums["mc_fault_code"].get(str(code), str(code))
         except SafetyRefusal:
             return str(code)
+
+    def monitor_row(self, v: dict, elapsed: float) -> list:
+        """One row of values, in MONITOR_COLUMNS order."""
+        return [f"{elapsed:.1f}", v["erpm"], v["duty"], v["current_motor"], v["current_in"], v["v_in"], v["temp_fet"],
+                v["temp_motor"], self.fault_name(v["fault_code"])]
 
     def _read_blob(self, command: int) -> bytes:
         return self.link.request(bytes([command]))[1:]
@@ -237,6 +246,7 @@ class Programmer:
         t0 = self.link.clock()
         reply = self.link.request(bytes([p.COMM_LISP_SET_RUNNING, 0]), timeout=PAUSE_TIMEOUT_S)
         if len(reply) > 1 and reply[1] == 1:
+            self.script_paused = True
             return True
         if self.link.clock() - t0 >= PAUSE_FAILED_AFTER_S:
             raise SafetyRefusal("the script did not pause within 2 s, so it may still be running. "
@@ -283,6 +293,28 @@ class Programmer:
         config.decode(app, lay, APP_ROOT)
         return backup.save(self.backup_dir, self.identify(), reason, blob, app, config.decode(blob, lay, MC_ROOT))
 
+    def compare_backup(self, doc: dict) -> dict:
+        """{field: (backup value, board value)} for motor config fields that differ."""
+        ident = self.identify()
+        if doc["fw"] != ident["fw"]:
+            raise SafetyRefusal(f"this backup is from firmware {doc['fw']}, the board runs {ident['fw']}.")
+        saved = config.decode(doc["mc_blob"], self.layout(), MC_ROOT)
+        return config.differences(saved, self.read_conf(MC_ROOT))
+
+    def check_can_stop(self, force: bool = False) -> None:
+        """Pausing takes away the script's throttle and kill control, so a turning motor refuses it."""
+        erpm = self.values()["erpm"]
+        if abs(erpm) > IDLE_MAX_ERPM and not force:
+            raise SafetyRefusal(
+                f"the motor is turning ({erpm} erpm), so the engine may be running. Pausing the script takes away "
+                "its throttle and kill control and leaves the servo where it is. Kill the engine with the RC switch. "
+                "--force overrides this.")
+
+    def check_can_start(self) -> None:
+        erpm = self.values()["erpm"]
+        if abs(erpm) > IDLE_MAX_ERPM:
+            raise SafetyRefusal(f"the motor is turning ({erpm} erpm). Stop it before restarting the script.")
+
     def stop(self) -> bool:
         """Pause the script and release the motor, in that order. Returns whether a script was paused."""
         try:
@@ -293,7 +325,10 @@ class Programmer:
     def start(self) -> bool:
         """Restart the script stored on the board. Returns whether it started."""
         ok = self.link.request(bytes([p.COMM_LISP_SET_RUNNING, 1]), timeout=5.0)
-        return len(ok) > 1 and ok[1] == 1
+        started = len(ok) > 1 and ok[1] == 1
+        if started:
+            self.script_paused = False
+        return started
 
     def terminal(self, command: str, wait: float = 0.5) -> list[str]:
         self.link.send(bytes([p.COMM_TERMINAL_CMD]) + command.encode() + b"\0")
@@ -302,4 +337,6 @@ class Programmer:
     def repl(self, text: str, *, allow_motor=False, wait: float = 0.6) -> list[str]:
         self.layout()  # the word lists are only reviewed for supported firmware
         self.link.send(bytes([p.COMM_LISP_REPL_CMD]) + text.encode() + b"\0", repl_allow_motor=allow_motor)
+        if not text.strip().startswith(":"):
+            self.script_paused = False  # the firmware resumes the evaluator for any expression
         return self.link.collect_prints(wait)

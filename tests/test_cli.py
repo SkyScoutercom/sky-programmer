@@ -7,8 +7,8 @@ import tty
 
 import pytest
 
-from fake_vesc import FakeVesc
 from sky_programmer.cli import main
+from sky_programmer.simulator import FakeVesc
 
 
 class PtyBoard:

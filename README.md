@@ -2,7 +2,7 @@
 
 # SKY programmer
 
-SkyScouter's terminal tool for reading and configuring VESC motor controllers.
+SkyScouter's terminal and desktop tool for reading and configuring VESC motor controllers.
 
 **Status: stage 1, not yet tested on a real board.** It is tested against a simulated VESC. Follow
 [docs/BENCH_TEST.md](docs/BENCH_TEST.md) on the bench before relying on it.
@@ -18,6 +18,27 @@ sky --version
 
 Close VESC Tool first, since only one program can use the port. Set the port with `--port` or `SKY_PORT`
 if more than one board is plugged in.
+
+## Desktop app
+
+```bash
+pipx install --force '.[gui]'   # installs both `sky` and `sky-gui`
+sky-gui --simulate              # try it first: a simulated board, nothing touches hardware
+sky-gui --install-launcher      # add SKY programmer to the Ubuntu app grid
+sky-gui                         # the real thing
+```
+
+| Page | What it does |
+|---|---|
+| Dashboard | Live values and charts, CSV recording, pause and start the script |
+| Configuration | Browse and search motor config, edit, review and write. App config is read only |
+| Backups | Back up, compare with the board, restore |
+| Console | Board messages, read-only terminal commands, the filtered REPL |
+
+It runs the same engine and the same checks as `sky`, and a write always ends in a typed `YES`. It offers none of the
+overrides (`--allow-risky`, `--accept-drift`, `--allow-default-foc-params`, `--allow-other-board`, `--allow-motor`,
+`--force`), so those stay deliberate terminal commands. Fields that always need one are locked in the table, with the
+reason beside them. See [SAFETY.md](SAFETY.md#the-desktop-app).
 
 ## Commands
 
@@ -70,7 +91,7 @@ hang a board at boot are refused with no override.
 
 ## Roadmap
 
-1. **Done, pending bench test:** status, monitor, get/set, backup/restore, REPL.
+1. **Done, pending bench test:** status, monitor, get/set, backup/restore, REPL, in the terminal and the desktop app.
 2. **C workflow:** build and upload C native libraries, running from RAM first.
 3. **Independent of VESC Tool:** own uploader and motor detection.
 4. **Firmware flashing:** last, and only with the checks listed in SAFETY.md.
@@ -84,5 +105,5 @@ pip install -e ".[dev]"
 ruff check . && pytest
 ```
 
-`tests/fake_vesc.py` is a simulated board with failures on demand, and any forbidden command it receives
-fails the test. `tools/gen_layout.py` generates a firmware's config layout from its sources.
+`src/sky_programmer/simulator.py` is a simulated board with failures on demand, and any forbidden command it receives
+fails the test. Desktop tests run the real window with no display (`QT_QPA_PLATFORM=offscreen`). `tools/gen_layout.py` generates a firmware's config layout from its sources.

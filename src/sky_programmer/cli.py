@@ -13,7 +13,7 @@ from . import APP_NAME, __version__, backup, config
 from .config import APP_ROOT, MC_ROOT
 from .errors import SafetyRefusal, SkyError
 from .link import Link, find_port, open_serial
-from .programmer import IDLE_MAX_ERPM, Programmer
+from .programmer import MONITOR_COLUMNS, Programmer
 
 ENGINE_PROMPT = "Engine stopped, propeller clear, supply stable? Type YES to write: "
 
@@ -92,7 +92,7 @@ def cmd_status(prog, args) -> int:
 
 
 def cmd_monitor(prog, args) -> int:
-    cols = ["t", "erpm", "duty", "motor_a", "input_a", "bus_v", "fet_c", "motor_c", "fault"]
+    cols = MONITOR_COLUMNS
     out = None
     f = open(args.log, "w", newline="") if args.log else None
     try:
@@ -103,8 +103,7 @@ def cmd_monitor(prog, args) -> int:
         t0 = time.monotonic()
         while not args.seconds or time.monotonic() - t0 < args.seconds:
             v = prog.values()
-            row = [f"{time.monotonic() - t0:.1f}", v["erpm"], v["duty"], v["current_motor"], v["current_in"],
-                   v["v_in"], v["temp_fet"], v["temp_motor"], prog.fault_name(v["fault_code"])]
+            row = prog.monitor_row(v, time.monotonic() - t0)
             print("  ".join(str(c).rjust(8) for c in row))
             for text in prog.link.collect_prints(args.period):
                 print(f"[board] {text}")
@@ -161,13 +160,8 @@ def cmd_backups(prog, args) -> int:
 
 
 def cmd_diff(prog, args) -> int:
-    doc = backup.load(args.file)
-    ident = prog.identify()
-    if doc["fw"] != ident["fw"]:
-        raise SafetyRefusal(f"this backup is from firmware {doc['fw']}, the board runs {ident['fw']}.")
+    diff = prog.compare_backup(backup.load(args.file))
     lay = prog.layout()
-    saved = config.decode(doc["mc_blob"], lay, MC_ROOT)
-    diff = config.differences(saved, prog.read_conf(MC_ROOT))
     if not diff:
         print("The board matches this backup.")
     for k, (a, b) in sorted(diff.items()):
@@ -187,12 +181,7 @@ def cmd_restore(prog, args) -> int:
 
 
 def cmd_stop(prog, args) -> int:
-    v = prog.values()
-    if abs(v["erpm"]) > IDLE_MAX_ERPM and not args.force:
-        raise SafetyRefusal(
-            f"the motor is turning ({v['erpm']} erpm), so the engine may be running. Pausing the script takes away "
-            "its throttle and kill control and leaves the servo where it is. Kill the engine with the RC switch. "
-            "--force overrides this.")
+    prog.check_can_stop(force=args.force)
     paused = prog.stop()
     print("Script paused, motor released." if paused else "No script on the board, motor released.")
     print("Note: C libraries' own threads keep running. This does not stop the engine.")
@@ -200,9 +189,7 @@ def cmd_stop(prog, args) -> int:
 
 
 def cmd_start(prog, args) -> int:
-    v = prog.values()
-    if abs(v["erpm"]) > IDLE_MAX_ERPM:
-        raise SafetyRefusal(f"the motor is turning ({v['erpm']} erpm). Stop it before restarting the script.")
+    prog.check_can_start()
     _confirm(args, "This runs the script stored on the board, which may move the motor or servo. Type YES: ")
     print("Script started." if prog.start() else "Could not start: is a script stored on the board?")
     return 0

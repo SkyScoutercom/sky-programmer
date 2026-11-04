@@ -10,8 +10,12 @@ from .errors import CommsError, SafetyRefusal
 from .safety import check_packet
 
 
+def list_ports() -> list[str]:
+    return sorted(glob.glob("/dev/ttyACM*"))
+
+
 def find_port() -> str:
-    ports = sorted(glob.glob("/dev/ttyACM*"))
+    ports = list_ports()
     if not ports:
         raise CommsError("no VESC found (no /dev/ttyACM* device). Plug it in, or pass --port.")
     if len(ports) > 1:
@@ -88,6 +92,10 @@ class Link:
         t0 = self.clock()
         while self.clock() - t0 < seconds:
             self._pump()
+        return self.take_prints()
+
+    def take_prints(self) -> list[str]:
+        """Return the print messages received so far, and forget them."""
         out = list(self.prints)
         self.prints.clear()
         return out

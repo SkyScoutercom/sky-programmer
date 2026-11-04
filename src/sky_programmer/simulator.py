@@ -16,9 +16,9 @@ from __future__ import annotations
 import math
 import struct
 
-from sky_programmer import config, safety
-from sky_programmer import protocol as p
-from sky_programmer.config import APP_ROOT, MC_ROOT
+from . import config, safety
+from . import protocol as p
+from .config import APP_ROOT, MC_ROOT
 
 UUID = bytes(range(1, 13))
 LAYOUT = config.load_layout(7, 0)
@@ -86,6 +86,7 @@ class FakeVesc:
         self.rx, self.tx = b"", b""
         self.commands, self.written, self.violations, self.prints_on_term = [], [], [], ["fault log empty"]
         self.erpm, self.current, self.duty, self.v_in, self.fault = 0, 0.0, 0.0, 48.0, 0
+        self.temp_fet, self.temp_motor = 25.0, 24.0
         self.script_present = knobs.pop("script_present", True)
         self.script_running = self.script_present
         self.pause_fails = knobs.pop("pause_fails", False)
@@ -218,7 +219,8 @@ class FakeVesc:
             self._reply(bytes([p.COMM_SET_MCCONF]))
 
     def _values(self):
-        return struct.pack(">Bhhiiiihihiiiiii" + "B", p.COMM_GET_VALUES, 250, 240, int(self.current * 100), 0, 0, 0,
+        return struct.pack(">Bhhiiiihihiiiiii" + "B", p.COMM_GET_VALUES, int(self.temp_fet * 10),
+                           int(self.temp_motor * 10), int(self.current * 100), 0, 0, 0,
                            int(self.duty * 1000), self.erpm, int(self.v_in * 10), 0, 0, 0, 0, 0, 0, self.fault)
 
     def value(self, field):

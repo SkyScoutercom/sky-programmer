@@ -3,11 +3,11 @@ import json
 
 import pytest
 
-from fake_vesc import LAYOUT, FakeVesc
 from sky_programmer import backup, config
 from sky_programmer import protocol as p
 from sky_programmer.config import MC_ROOT
 from sky_programmer.errors import CommsError, SafetyRefusal, VerifyFailed
+from sky_programmer.simulator import LAYOUT, FakeVesc
 
 
 def write(prog, **changes):

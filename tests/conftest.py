@@ -1,9 +1,9 @@
 import pytest
 
-from fake_vesc import FakeVesc
 from sky_programmer.errors import SafetyRefusal
 from sky_programmer.link import Link
 from sky_programmer.programmer import Programmer
+from sky_programmer.simulator import FakeVesc
 
 
 @pytest.fixture

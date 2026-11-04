@@ -55,6 +55,31 @@ It can't promise everything:
 Blocking uses an allow-list: `check_packet()` in `safety.py` sees every packet, and any command not reviewed
 and listed is refused. Only 10 of the 157 commands are allowed.
 
+## The desktop app
+
+The desktop app is a front end to the same engine, so everything on this page applies. It adds no firmware command and
+no way around `check_packet()`. It adds these rules of its own, each covered by `tests/test_gui.py`:
+
+| Risk | Protection |
+|---|---|
+| A live-values poll racing a write and taking its reply | One thread owns the port and runs one job at a time. Polling only happens with no job waiting |
+| Polling resuming a paused script | Polling only sends `COMM_GET_VALUES` |
+| Two writes queued by a double click | Only one exclusive job can be pending, and the controls are disabled meanwhile |
+| Closing the window or disconnecting during a write | Refused until the job has finished |
+| A confirmation clicked out of habit | YES has to be typed, and Cancel is the default button |
+| The motor starting, or the config changing, during a dialog | `commit()` and the start job check again after the dialog |
+| The board disappearing during a dialog | Nothing is queued on a board that's gone, and the app says nothing was written |
+| Forgetting that a script is paused | A banner stays up while this app knows it paused the script, and disconnecting or closing warns about it |
+| A REPL expression resuming a paused script | The app asks first |
+| Old numbers looking live | Tiles go blank when no value has arrived for 1.5 s, and charts show a gap |
+| Scrolling over a dropdown changing a setting | Dropdowns in the table ignore the mouse wheel |
+| An override clicked past | The app has none. They stay in the terminal, where each one is a typed flag |
+| Mistaking the simulator for a real board | A permanent banner, and its backups go to a temporary folder |
+
+The paused banner only knows what this app did. The board can't be asked, because `COMM_LISP_GET_STATS` resumes a
+paused script, so a pause made by VESC Tool or an earlier session doesn't show, and a power-cycle doesn't clear the banner
+until you reconnect.
+
 ## Every config write follows these steps
 
 1. Read the config twice and require identical results.
@@ -62,7 +87,7 @@ and listed is refused. Only 10 of the 157 commands are allowed.
 3. Check the result: validity rules, VESC Tool's ranges, board ratings and risky fields, that the supply stays in the
    new range, for BLDC to FOC that all three motor values were measured, and that the live config matches the baseline
    backup.
-4. Show the changes and ask for confirmation that the engine is stopped.
+4. Show the changes and ask for confirmation that the engine is stopped. In the desktop app this is a typed YES.
 5. Check the motor is idle and the supply is in range. This comes first, so a turning engine keeps its script.
 6. Pause the script. If it doesn't pause, stop. If a later check refuses, say the script is now paused.
 7. Check idle again, and re-read to require that nothing changed since planning.
