@@ -33,11 +33,12 @@ def install_launcher() -> Path:
         raise OSError(f"could not save {icon}")
     entry = data / "applications" / f"{DESKTOP_ID}.desktop"
     entry.parent.mkdir(parents=True, exist_ok=True)
-    # This install's own Python, so the launcher can't pick up a different copy found on PATH.
+    # This install's own Python, so the launcher can't pick up a different copy found on PATH. The icon's full path,
+    # because GNOME Shell can miss an icon added to the theme folder after it started.
     entry.write_text(
         "[Desktop Entry]\nType=Application\n"
         f"Name={APP_NAME}\nComment=Read and configure VESC motor controllers\n"
-        f"Exec={_desktop_quote(sys.executable)} -m sky_programmer.gui\nIcon={DESKTOP_ID}\nTerminal=false\n"
+        f"Exec={_desktop_quote(sys.executable)} -m sky_programmer.gui\nIcon={icon}\nTerminal=false\n"
         f"Categories=Development;Electronics;\nStartupWMClass={DESKTOP_ID}\n")
     return entry
 

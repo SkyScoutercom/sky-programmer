@@ -1491,6 +1491,9 @@ def test_logo_loads_and_the_icon_is_square():
     assert not theme.logo_pixmap(36).isNull()
     icon = theme.icon_image(256)
     assert (icon.width(), icon.height()) == (256, 256)
+    assert icon.pixelColor(128, 8).name() == "#ffffff"  # the white tile, so the logo shows on a dark app grid
+    assert icon.pixelColor(0, 0).alpha() == 0  # rounded corners
+    assert any(icon.pixelColor(x, 128).name() != "#ffffff" for x in range(256))  # and the logo on it
 
 
 def test_launcher_is_written_for_this_user_only(tmp_path, monkeypatch):
@@ -1499,8 +1502,9 @@ def test_launcher_is_written_for_this_user_only(tmp_path, monkeypatch):
     entry = install_launcher()
     assert entry == tmp_path / "applications" / "sky-programmer.desktop"
     text = entry.read_text()
-    assert "Exec=" in text and "Icon=sky-programmer" in text and "Terminal=false" in text
-    assert (tmp_path / "icons/hicolor/256x256/apps/sky-programmer.png").stat().st_size > 1000
+    icon = tmp_path / "icons/hicolor/256x256/apps/sky-programmer.png"
+    assert "Exec=" in text and f"Icon={icon}\n" in text and "Terminal=false" in text
+    assert icon.stat().st_size > 1000
 
 
 def test_simulated_backups_cannot_reach_the_real_folder(tmp_path):

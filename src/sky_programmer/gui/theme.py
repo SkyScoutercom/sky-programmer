@@ -271,13 +271,18 @@ def logo_pixmap(height: int, scale: float = 1.0) -> QPixmap:
 
 
 def icon_image(size: int) -> QImage:
-    """The logo centred on a transparent square, since desktop icons must be square."""
+    """The logo on a white rounded tile: desktop icons must be square, and its dark blue vanishes on a dark app grid."""
+    inner = int(size * 0.84)
     src = QImage()
     src.loadFromData(QByteArray(_logo_bytes()))
-    src = src.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+    src = src.scaled(inner, inner, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
     out = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     out.fill(Qt.GlobalColor.transparent)
     painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#FFFFFF"))
+    painter.drawRoundedRect(QRectF(0, 0, size, size), size * 0.2, size * 0.2)
     painter.drawImage((size - src.width()) // 2, (size - src.height()) // 2, src)
     painter.end()
     return out
