@@ -31,6 +31,8 @@ def install_launcher() -> Path:
     icon.parent.mkdir(parents=True, exist_ok=True)
     if not theme.icon_image(256).save(str(icon)):
         raise OSError(f"could not save {icon}")
+    # GNOME Shell only rescans when this folder's own time changes, which adding a file deeper inside doesn't do.
+    os.utime(data / "icons/hicolor")
     entry = data / "applications" / f"{DESKTOP_ID}.desktop"
     entry.parent.mkdir(parents=True, exist_ok=True)
     # This install's own Python, so the launcher can't pick up a different copy found on PATH. The icon's full path,

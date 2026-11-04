@@ -1499,7 +1499,10 @@ def test_logo_loads_and_the_icon_is_square():
 def test_launcher_is_written_for_this_user_only(tmp_path, monkeypatch):
     QApplication.instance() or QApplication([])
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    (tmp_path / "icons/hicolor/256x256/apps").mkdir(parents=True)
+    os.utime(tmp_path / "icons/hicolor", (1000, 1000))
     entry = install_launcher()
+    assert (tmp_path / "icons/hicolor").stat().st_mtime > 1000  # how GNOME Shell notices a new icon
     assert entry == tmp_path / "applications" / "sky-programmer.desktop"
     text = entry.read_text()
     icon = tmp_path / "icons/hicolor/256x256/apps/sky-programmer.png"
