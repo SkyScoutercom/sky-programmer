@@ -1522,6 +1522,7 @@ def test_the_self_test_passes_and_writes_its_report(tmp_path):
     assert "PASSED" in text and "FAIL" not in text
     assert "REPL refuses cmds-proc" in text
     assert "image chevron-night.svg" in text
+    assert "ok   the real serial library loads" in text
     theme.apply("day")
 
 

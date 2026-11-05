@@ -17,8 +17,8 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
 from .. import config, safety
-from ..errors import SafetyRefusal
-from ..link import list_ports
+from ..errors import CommsError, SafetyRefusal
+from ..link import list_ports, open_serial
 from . import theme
 from .demo import DemoBoard
 from .window import MainWindow
@@ -58,6 +58,15 @@ def _refuses(text: str) -> bool:
     return False
 
 
+def _serial_library_works() -> bool:
+    """The simulated board never loads it, so a build missing it would only fail with a real board plugged in."""
+    try:
+        open_serial("COM254" if sys.platform == "win32" else "/dev/sky-programmer-self-test")
+    except CommsError:
+        return True  # the right answer for a port that isn't there. A missing library raises ImportError instead.
+    return False
+
+
 def _check_data_files() -> list:
     results = [("config layout for firmware 7.00", len(config.load_layout(7, 0).fields[config.MC_ROOT]) > 100),
                ("firmware word list", len(safety.firmware_words()) > 100),
@@ -71,6 +80,7 @@ def _check_data_files() -> list:
             results.append((f"image {Path(path).name}", not QImage(path).isNull()))
     list_ports()  # must not raise, even with no board
     results.append(("listing serial ports", True))
+    results.append(("the real serial library loads and reports a missing port", _serial_library_works()))
     return results
 
 
