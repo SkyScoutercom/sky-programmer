@@ -50,10 +50,12 @@ jobs:
       - name: The terminal tool must start, and work without Qt
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false  # the second command is meant to report an error
           & "dist\SKY programmer\sky.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "sky.exe failed" }
-          & "dist\SKY programmer\sky.exe" --port COM254 status
+          & "dist\SKY programmer\sky.exe" --port COM254 status 2>&1 | Write-Output
           if ($LASTEXITCODE -ne 3) { throw "expected a clear communication error, got $LASTEXITCODE" }
+          exit 0
 
       - name: Make the installer and the portable zip
         shell: pwsh
