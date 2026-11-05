@@ -1,6 +1,6 @@
 """The script-state record and guards that the terminal and desktop apps share."""
 import os
-import pty
+import sys
 
 import pytest
 
@@ -9,7 +9,10 @@ from sky_programmer.errors import CommsError, SafetyRefusal, VerifyFailed
 from sky_programmer.link import open_serial
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uses a Linux pseudo-terminal")
 def test_nothing_else_can_open_the_port_while_it_is_in_use():
+    import pty
+
     master, slave = pty.openpty()
     path = os.ttyname(slave)
     ser = open_serial(path)

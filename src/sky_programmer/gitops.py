@@ -20,6 +20,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from .paths import data_dir
+
 GIT_TIMEOUT_S = 30.0
 NET_TIMEOUT_S = 120.0
 _MAX_LISTED = 200
@@ -35,8 +37,7 @@ class GitFailed(Exception):
 
 
 def audit_path() -> Path:
-    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    return Path(base) / "sky-programmer" / "git_ops.log"
+    return data_dir() / "git_ops.log"
 
 
 def is_app_repo(path) -> bool:

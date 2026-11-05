@@ -1,7 +1,6 @@
 """The main window: connection, pages, banners, and the one flow that writes to a board."""
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -26,6 +25,7 @@ from .. import APP_NAME, backup, config, gitops
 from ..config import MC_ROOT
 from ..errors import CommsError, SafetyRefusal, VerifyFailed
 from ..link import Link, list_ports, open_serial
+from ..paths import config_dir
 from . import theme
 from .backups_page import BackupsPage
 from .board import BoardThread
@@ -42,8 +42,7 @@ NAV = ("Dashboard", "Configuration", "Backups", "Console", "Updates")
 
 
 def _default_settings_path() -> Path:
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    return Path(base) / "sky-programmer" / "settings.ini"
+    return config_dir() / "settings.ini"
 
 
 class MainWindow(QMainWindow):
@@ -91,7 +90,10 @@ class MainWindow(QMainWindow):
         self.dashboard, self.config_page = Dashboard(self), ConfigPage(self)
         self.backups_page, self.console = BackupsPage(self), ConsolePage(self)
         saved_repo = self.settings.value("repo")
-        self.updates_page = UpdatesPage(self, repo_dir or saved_repo or gitops.find_checkout())
+        # A packaged .exe has no source folder, and a pull couldn't change it: a new version is a new download.
+        self.packaged = bool(getattr(sys, "frozen", False))
+        checkout = None if self.packaged else gitops.find_checkout()
+        self.updates_page = UpdatesPage(self, repo_dir or saved_repo or checkout)
         self.board_pages = (self.dashboard, self.config_page, self.backups_page, self.console)
         self.pages = (*self.board_pages, self.updates_page)
         self.welcome = self._build_welcome()
@@ -100,6 +102,7 @@ class MainWindow(QMainWindow):
             self.nav.addItem(QListWidgetItem(name))
             self.stack.addWidget(page)
         self._paint_nav_icons()
+        self.nav.item(NAV.index("Updates")).setHidden(self.packaged)
         self.nav.currentRowChanged.connect(self._nav_changed)
         body.addWidget(self.nav)
         right = QVBoxLayout()

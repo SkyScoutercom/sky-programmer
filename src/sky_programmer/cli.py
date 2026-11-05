@@ -25,7 +25,7 @@ def _banner() -> None:
     """Show the brand in a real terminal only, so piped output and logs stay plain. Honours NO_COLOR."""
     if not sys.stdout.isatty():
         return
-    if os.environ.get("NO_COLOR"):
+    if os.environ.get("NO_COLOR") or sys.platform == "win32":  # an older Windows console prints the codes as text
         print(APP_NAME)
     else:
         print(f"\033[1;{LOGO_LIGHT}mS\033[1;{LOGO_DARK}mK\033[0m  {APP_NAME} {__version__}  |  SkyScouter")
@@ -238,7 +238,7 @@ def cmd_repl(prog, args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="sky", description=f"{APP_NAME}: read and configure VESC motor controllers.")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
-    ap.add_argument("--port", default=os.environ.get("SKY_PORT"), help="serial port, default: the only /dev/ttyACM*")
+    ap.add_argument("--port", default=os.environ.get("SKY_PORT"), help="serial port, default: the only board found")
     ap.add_argument("--backup-dir", default=None, help=f"default: {backup.default_dir()}")
     sub = ap.add_subparsers(dest="command", required=True)
 

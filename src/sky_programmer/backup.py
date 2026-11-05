@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from .errors import SafetyRefusal
+from .paths import data_dir
 
 FORMAT = 1
 
@@ -19,8 +20,7 @@ BASELINE_REASONS = ("manual", "post-write")
 
 
 def default_dir() -> Path:
-    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    return Path(base) / "sky-programmer" / "backups"
+    return data_dir() / "backups"
 
 
 def _pack(blob: bytes) -> dict:

@@ -50,6 +50,18 @@ overrides (`--allow-risky`, `--accept-drift`, `--allow-default-foc-params`, `--a
 `--force`), so those stay deliberate terminal commands. Fields that always need one are locked in the table, with the
 reason beside them. See [SAFETY.md](SAFETY.md#the-desktop-app).
 
+### Windows
+
+Get `SKY-programmer-setup-<version>.exe` from the **Windows build** run on GitHub (Actions, then Artifacts) and run it.
+It needs no administrator rights, and it adds SKY programmer and a terminal shortcut to the Start menu. There's also a
+portable zip: unzip it and run `SKY programmer.exe`. The build isn't code-signed yet, so Windows SmartScreen warns that
+the publisher is unknown: choose **More info**, then **Run anyway**.
+
+The port is a USB COM port, such as `COM7`. Backups are in `%LOCALAPPDATA%\sky-programmer\backups`. A packaged build has
+no Updates page: a new version is a new download. `sky.exe` is the terminal tool, in the same folder.
+
+To check an install, run `"SKY programmer.exe" --self-test report.txt`. It uses a simulated board and touches no hardware.
+
 ## Commands
 
 | Command | What it does |

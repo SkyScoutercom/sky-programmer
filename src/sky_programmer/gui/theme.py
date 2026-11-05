@@ -11,7 +11,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
 
 ASSETS = Path(__file__).parent / "assets"
-MONO = "'DejaVu Sans Mono', 'Ubuntu Mono', monospace"
+MONO = "'DejaVu Sans Mono', 'Ubuntu Mono', 'Consolas', monospace"
 
 
 @dataclass(frozen=True)

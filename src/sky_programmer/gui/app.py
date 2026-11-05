@@ -45,6 +45,14 @@ def install_launcher() -> Path:
     return entry
 
 
+def _set_windows_app_id() -> None:
+    """So the Windows taskbar shows this app's own icon, rather than grouping it under Python's."""
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("SkyScouter.SKYprogrammer")
+
+
 def _show_unexpected_errors(window) -> None:
     """Under the launcher there's no terminal, so an unexpected error would otherwise vanish."""
 
@@ -66,11 +74,22 @@ def run(argv=None) -> int:
     ap.add_argument("--backup-dir", default=None, help="where config backups are kept")
     ap.add_argument("--simulate", action="store_true", help="try the app on a simulated board; no hardware is touched")
     ap.add_argument("--install-launcher", action="store_true", help="add the app to the Ubuntu app grid, then exit")
+    ap.add_argument("--self-test", nargs="?", const="", metavar="REPORT",
+                    help="check this install, using a simulated board, and exit: 0 means it passed")  # fmt: skip
     args = ap.parse_args(argv)
 
     if args.install_launcher:
+        if sys.platform == "win32":
+            print("On Windows, the installer adds the Start menu entry.")
+            return 1
         print(f"Launcher installed: {install_launcher()}")
         return 0
+    if args.self_test is not None:
+        from .selftest import run_self_test
+
+        return run_self_test(args.self_test)
+
+    _set_windows_app_id()
 
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)

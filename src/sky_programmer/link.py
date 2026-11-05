@@ -1,11 +1,17 @@
 """The USB link. This is the only module that writes to the serial port."""
 from __future__ import annotations
 
-import fcntl
 import glob
-import termios
+import re
+import sys
 import time
 from collections import deque
+
+try:
+    import fcntl
+    import termios
+except ImportError:  # Windows, where every COM port is exclusive anyway
+    fcntl = termios = None
 
 from . import protocol as p
 from .errors import CommsError, SafetyRefusal
@@ -14,14 +20,24 @@ from .safety import check_packet
 WRITE_TIMEOUT_S = 2.0  # a wedged USB link must become an error, never a hang
 
 
+def _port_number(name: str) -> int:
+    found = re.search(r"\d+$", name)
+    return int(found.group()) if found else -1
+
+
 def list_ports() -> list[str]:
+    """Ports that could be a board. On Windows that's USB COM ports only, so Bluetooth ones are never offered."""
+    if sys.platform == "win32":
+        from serial.tools import list_ports as ports
+
+        return sorted((port.device for port in ports.comports() if port.vid is not None), key=_port_number)
     return sorted(glob.glob("/dev/ttyACM*"))
 
 
 def find_port() -> str:
     ports = list_ports()
     if not ports:
-        raise CommsError("no VESC found (no /dev/ttyACM* device). Plug it in, or pass --port.")
+        raise CommsError("no VESC found. Plug it in, or pass --port.")
     if len(ports) > 1:
         raise SafetyRefusal(f"more than one possible board ({', '.join(ports)}). Pick one with --port.")
     return ports[0]
@@ -33,7 +49,7 @@ def open_serial(port: str):
     class ExclusiveSerial(serial.Serial):
         def close(self) -> None:
             # The kernel keeps this flag while anything else holds the port, which would block the next connection.
-            if self.is_open:
+            if fcntl and self.is_open:
                 try:
                     fcntl.ioctl(self.fileno(), termios.TIOCNXCL)
                 except OSError:
@@ -43,7 +59,8 @@ def open_serial(port: str):
     try:
         ser = ExclusiveSerial(port, 115200, timeout=0.05, write_timeout=WRITE_TIMEOUT_S, exclusive=True)
         # exclusive= is only an advisory lock, so a program opening the port after us could still take the replies.
-        fcntl.ioctl(ser.fileno(), termios.TIOCEXCL)
+        if fcntl:
+            fcntl.ioctl(ser.fileno(), termios.TIOCEXCL)
         return ser
     except (OSError, ValueError, serial.SerialException) as e:
         raise CommsError(f"cannot open {port}: {e}. Is VESC Tool still connected?") from e

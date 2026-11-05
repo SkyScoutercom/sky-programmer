@@ -1084,6 +1084,7 @@ def test_recording_stops_and_closes_on_disconnect(gui, tmp_path):
     assert win.dashboard._csv is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="/dev/full is Linux only")
 def test_a_full_disk_stops_recording_and_says_so(gui, tmp_path):
     win, _, prompts = gui()
     prompts.csv_path = "/dev/full"
@@ -1407,9 +1408,10 @@ def test_git_failing_to_run_is_shown_on_the_page(gui, source_folder, monkeypatch
 
 # ---------------------------------------------------------------------- safety boundaries in the source
 def _gui_sources():
-    """demo.py is left out: it plays the board's side of the link, so it speaks in packets."""
+    """Left out: demo.py plays the board's side of the link, and selftest.py names the words it proves are refused."""
     folder = Path(resources.files("sky_programmer.gui"))
-    return {path.name: path.read_text() for path in folder.glob("*.py") if path.name != "demo.py"}
+    return {path.name: path.read_text(encoding="utf-8") for path in folder.glob("*.py")
+            if path.name not in ("demo.py", "selftest.py")}  # fmt: skip
 
 
 @pytest.mark.parametrize("word", ["allow_risky", "accept_drift", "allow_default_foc", "allow_other_board",
@@ -1508,6 +1510,51 @@ def test_launcher_is_written_for_this_user_only(tmp_path, monkeypatch):
     icon = tmp_path / "icons/hicolor/256x256/apps/sky-programmer.png"
     assert "Exec=" in text and f"Icon={icon}\n" in text and "Terminal=false" in text
     assert icon.stat().st_size > 1000
+
+
+def test_the_self_test_passes_and_writes_its_report(tmp_path):
+    from sky_programmer.gui.selftest import run_self_test
+
+    QApplication.instance() or QApplication([])
+    report = tmp_path / "report.txt"
+    assert run_self_test(report) == 0
+    text = report.read_text(encoding="utf-8")
+    assert "PASSED" in text and "FAIL" not in text
+    assert "REPL refuses cmds-proc" in text
+    assert "image chevron-night.svg" in text
+    theme.apply("day")
+
+
+def test_the_self_test_fails_when_the_word_list_is_missing(tmp_path, monkeypatch):
+    from sky_programmer import safety
+    from sky_programmer.gui import selftest
+
+    QApplication.instance() or QApplication([])
+
+    def missing():
+        raise safety.SafetyRefusal("missing")
+
+    monkeypatch.setattr(selftest.safety, "firmware_words", missing)
+    assert selftest.run_self_test(tmp_path / "r.txt") == 1
+    assert "FAILED" in (tmp_path / "r.txt").read_text(encoding="utf-8")
+
+
+def test_a_packaged_app_has_no_updates_page(tmp_path, monkeypatch):
+    QApplication.instance() or QApplication([])
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    win = MainWindow(ports=lambda: [], backup_dir=tmp_path, prompts=FakePrompts(),
+                     settings_path=tmp_path / "settings.ini")  # fmt: skip
+    assert win.nav.item(4).isHidden()
+    assert win.updates_page.repo is None
+    win.close()
+
+
+def test_a_normal_install_keeps_the_updates_page(tmp_path):
+    QApplication.instance() or QApplication([])
+    win = MainWindow(ports=lambda: [], backup_dir=tmp_path, prompts=FakePrompts(),
+                     settings_path=tmp_path / "settings.ini", repo_dir=tmp_path / "no-repo")  # fmt: skip
+    assert not win.nav.item(4).isHidden()
+    win.close()
 
 
 def test_simulated_backups_cannot_reach_the_real_folder(tmp_path):

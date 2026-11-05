@@ -3,9 +3,13 @@ import os
 import sys
 import threading
 import time
-import tty
 
 import pytest
+
+if sys.platform == "win32":
+    pytest.skip("these tests use a Linux pseudo-terminal", allow_module_level=True)
+
+import tty  # noqa: E402
 
 from sky_programmer.cli import main
 from sky_programmer.simulator import FakeVesc

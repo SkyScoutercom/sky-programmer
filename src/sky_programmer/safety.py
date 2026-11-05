@@ -124,6 +124,8 @@ def firmware_words() -> frozenset:
     for entry in resources.files("sky_programmer.layouts").iterdir():
         if entry.name.endswith(".json"):
             words |= set(json.loads(entry.read_text())["lisp_extensions"])
+    if not words:  # an empty list would let every firmware word through, so a broken install must fail closed
+        raise SafetyRefusal("this install is missing its firmware word list, so the REPL is disabled. Reinstall it.")
     return frozenset(words)
 
 

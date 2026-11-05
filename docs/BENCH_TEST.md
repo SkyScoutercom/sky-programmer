@@ -69,6 +69,17 @@ Only after A to C pass. Start it with `sky-gui`, and use the same setup: engine 
 | 30 | Pause script, type YES, then watch something the script visibly does | It stops, and the banner appears |
 | 31 | With the script paused, disconnect and reconnect without power-cycling | The banner comes back, and a REPL line asks first |
 
+## F. Windows
+
+Windows has its own USB and serial behaviour, so a pass on Linux doesn't carry over. Install it, then repeat A to C with
+`sky.exe` and E with the app, using the board's COM port. Check these as well:
+
+| # | Action | Expect |
+|---|---|---|
+| 32 | Plug the board in with the app open | Its COM port appears within a few seconds. Bluetooth COM ports aren't listed |
+| 33 | Power-cycle after a write, reconnect | The value is still there, as in step 13 |
+| 34 | Pull the USB cable during live values | Clear message, back to the welcome screen, no hang |
+
 Please send back any step that didn't match, with its output. Steps 6, 7, 11, 13, 15 and 17 test assumptions the
 simulated board can't confirm.
 

@@ -76,7 +76,8 @@ no way around `check_packet()`. It adds these rules of its own, each covered by 
 | Old numbers looking live | Tiles go blank and charts say "no data" when no value has arrived for 1.5 s |
 | A new backup quietly accepting a script's temporary changes | Back up now shows the differences and needs a typed YES. A pre-write backup never counts as the baseline, so a failed restore can't accept them either |
 | Choosing the wrong board | A chosen or typed port is never replaced, several boards are never guessed between, and the write dialog names the board's UUID |
-| Another program taking the replies | The port is opened exclusively (`TIOCEXCL`), so VESC Tool can't open it afterwards |
+| Another program taking the replies | The port is opened exclusively (`TIOCEXCL` on Linux, and Windows does this for every COM port), so VESC Tool can't open it afterwards |
+| A packaged build leaving out its safety data | With no firmware word list the REPL refuses everything, and the Windows build must pass `--self-test` on the finished `.exe` before it's uploaded |
 | A wedged USB link hanging the app | Serial writes time out after 2 s and become a communication error |
 | Scrolling over a dropdown changing a setting | Dropdowns in the table ignore the mouse wheel |
 | An override clicked past | The app has no `--allow-*` or `--force` override. They stay in the terminal, where each one is a typed flag |

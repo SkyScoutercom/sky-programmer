@@ -1,0 +1,74 @@
+name: Windows build
+
+# PyInstaller can't cross-build, so the .exe has to be made on Windows. The finished app has to pass its own self-test
+# before anything is uploaded. Download the result from the run's Artifacts section.
+on:
+  push:
+    branches: [desktop-app, stage-1]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Tests on Windows, from source
+        run: |
+          pip install -e ".[dev]"
+          pytest -q
+
+      - name: Install normally, as the packager needs
+        run: |
+          pip uninstall -y sky-programmer
+          pip install ".[gui]" pyinstaller pillow
+
+      - name: Build
+        run: |
+          python packaging/windows/make_icon.py
+          pyinstaller --noconfirm packaging/windows/sky-programmer.spec
+
+      - name: The finished app must pass its own self-test
+        shell: pwsh
+        run: |
+          $exe = "dist\SKY programmer\SKY programmer.exe"
+          $report = Join-Path $env:RUNNER_TEMP "self-test.txt"
+          $run = Start-Process -FilePath $exe -ArgumentList "--self-test", "`"$report`"" -Wait -PassThru
+          if (Test-Path $report) { Get-Content $report } else { Write-Output "no report was written" }
+          if ($run.ExitCode -ne 0) { throw "self-test failed with exit code $($run.ExitCode)" }
+
+      - name: The terminal tool must start, and work without Qt
+        shell: pwsh
+        run: |
+          & "dist\SKY programmer\sky.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "sky.exe failed" }
+          & "dist\SKY programmer\sky.exe" --port COM254 status
+          if ($LASTEXITCODE -ne 3) { throw "expected a clear communication error, got $LASTEXITCODE" }
+
+      - name: Make the installer and the portable zip
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $version = python -c "import sky_programmer; print(sky_programmer.__version__)"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "the installer failed to build" }
+          Compress-Archive -Path "dist\SKY programmer" -DestinationPath "dist\SKY-programmer-portable-$version.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SKY-programmer-windows
+          path: |
+            dist/SKY-programmer-setup-*.exe
+            dist/SKY-programmer-portable-*.zip
+          if-no-files-found: error
+          retention-days: 30
