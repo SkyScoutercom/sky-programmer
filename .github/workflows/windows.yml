@@ -37,6 +37,7 @@ jobs:
         run: |
           python packaging/windows/make_icon.py
           pyinstaller --noconfirm packaging/windows/sky-programmer.spec
+          Copy-Item LICENSE "dist\SKY programmer\LICENSE.txt"
 
       - name: The finished app must pass its own self-test
         shell: pwsh
