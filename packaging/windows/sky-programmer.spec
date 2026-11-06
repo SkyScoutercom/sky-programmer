@@ -19,4 +19,6 @@ cli = Analysis([str(here / "cli_entry.py")], datas=datas, hiddenimports=hidden,
                excludes=["tkinter", "PySide6", "shiboken6", "sky_programmer.gui"])
 cli_exe = EXE(PYZ(cli.pure), cli.scripts, [], exclude_binaries=True, name="sky", icon=icon, console=True)
 
-COLLECT(gui_exe, gui.binaries, gui.datas, cli_exe, cli.binaries, cli.datas, name="SKY programmer")
+# The GPL travels with every copy of the program.
+license_file = [("LICENSE.txt", str(here.parent.parent / "LICENSE"), "DATA")]
+COLLECT(gui_exe, gui.binaries, gui.datas, cli_exe, cli.binaries, cli.datas, license_file, name="SKY programmer")

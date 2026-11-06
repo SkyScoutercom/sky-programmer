@@ -15,6 +15,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\..\dist
 OutputBaseFilename=SKY-programmer-setup-{#AppVersion}
 SetupIconFile=sky-programmer.ico
+LicenseFile=..\..\LICENSE
 UninstallDisplayIcon={app}\SKY programmer.exe
 Compression=lzma2
 SolidCompression=yes

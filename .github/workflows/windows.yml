@@ -46,6 +46,7 @@ jobs:
           $run = Start-Process -FilePath $exe -ArgumentList "--self-test", "`"$report`"" -Wait -PassThru
           if (Test-Path $report) { Get-Content $report } else { Write-Output "no report was written" }
           if ($run.ExitCode -ne 0) { throw "self-test failed with exit code $($run.ExitCode)" }
+          if (-not (Test-Path "dist\SKY programmer\LICENSE.txt")) { throw "the GPL text is missing from the app folder" }
 
       - name: The terminal tool must start, and work without Qt
         shell: pwsh
