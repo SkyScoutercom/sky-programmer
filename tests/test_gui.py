@@ -1560,11 +1560,109 @@ def test_a_normal_install_keeps_the_updates_page(tmp_path):
 
 def test_simulated_backups_cannot_reach_the_real_folder(tmp_path):
     QApplication.instance() or QApplication([])
-    win = MainWindow(backup_dir=tmp_path, demo=DemoBoard(), prompts=FakePrompts(),
+    real = tmp_path / "real-backups"
+    win = MainWindow(backup_dir=real, demo=DemoBoard(), prompts=FakePrompts(),
                      settings_path=tmp_path / "settings.ini", repo_dir=tmp_path / "no-repo")
     win.show()
     wait_until(lambda: win.info is not None)
-    assert win.backup_dir == str(tmp_path)
-    assert str(backup.default_dir()) != win.backup_dir
+    simulated = Path(win.backup_dir)
+    assert simulated != real and str(backup.default_dir()) != win.backup_dir
     assert not win.demo_banner.isHidden()
+    win.backups_page.backup_now()
+    wait_until(lambda: win.backups_page.table.rowCount() == 1)
+    assert not real.exists() or not any(real.rglob("*.json"))
+    wait_until(lambda: not win.board.busy)
     win.close()
+    assert not simulated.exists()  # deleted when the app closes, as the banner says
+
+
+# ---------------------------------------------------------------------- the simulated board as a choice
+@pytest.fixture
+def chooser(tmp_path):
+    """A window with one real (fake) board and the simulated one on offer."""
+    QApplication.instance() or QApplication([])
+    fake = CheckedBoard()
+    win = MainWindow(link_factory=lambda port: Link(fake, clock=fake.clock, sleep=fake.clock.sleep),
+                     ports=lambda: ["/dev/ttyFAKE"], backup_dir=tmp_path / "real", prompts=FakePrompts(),
+                     settings_path=tmp_path / "settings.ini", repo_dir=tmp_path / "no-repo")  # fmt: skip
+    win.show()
+    yield win, fake
+    win.prompts.close_answer = True
+    wait_until(lambda: not win.board or not win.board.busy)
+    win.close()
+
+
+def _choices(win):
+    return [win.port_combo.itemText(i) for i in range(win.port_combo.count())]
+
+
+def test_the_simulated_board_is_always_offered_last(chooser):
+    win, _ = chooser
+    assert _choices(win) == ["/dev/ttyFAKE", "Simulated board"]
+    win.ports = lambda: []
+    win.refresh_ports()
+    assert _choices(win) == ["Simulated board"]
+
+
+def test_the_simulated_board_is_never_chosen_for_you(chooser):
+    win, _ = chooser
+    assert win.port_combo.currentText() == "/dev/ttyFAKE"
+    win.ports = lambda: []
+    win.refresh_ports()
+    assert win.port_combo.currentText() == ""
+
+
+def test_the_welcome_button_connects_the_simulated_board(chooser):
+    win, fake = chooser
+    assert win.try_simulated_button.isVisible()
+    win.try_simulated_button.click()
+    wait_until(lambda: win.info is not None)
+    assert win.demo is not None
+    assert not win.demo_banner.isHidden()
+    assert "Simulated" in win.pill.text()
+    assert Path(win.backup_dir) != Path(win._real_backup_dir)
+    assert fake.commands == []  # the real board was never touched
+
+
+def test_after_the_simulated_board_a_real_one_uses_the_real_folder_and_no_banner(chooser):
+    win, fake = chooser
+    win.connect_simulated()
+    wait_until(lambda: win.info is not None)
+    settle(win)
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    assert win.demo is None and win.demo_banner.isHidden()
+    assert win.backup_dir == win._real_backup_dir
+    win.port_combo.setCurrentText("/dev/ttyFAKE")
+    win.connect_board()
+    wait_until(lambda: win.info is not None)
+    assert win.demo is None and win.demo_banner.isHidden()
+    assert win.pill.text().endswith("Connected")
+    assert fake.commands
+    settle(win)
+
+
+def test_a_simulated_pause_is_never_remembered_as_a_real_boards(chooser, tmp_path):
+    win, _ = chooser
+    win.connect_simulated()
+    wait_until(lambda: win.info is not None)
+    settle(win)
+    win.dashboard.pause()
+    settle(win)
+    wait_until(lambda: win.script_paused)
+    win.settings.sync()
+    assert win._paused_uuids == set()
+    settings = tmp_path / "settings.ini"
+    assert not settings.exists() or win.info["ident"]["uuid"] not in settings.read_text()
+
+
+def test_the_motor_turning_switch_is_reset_when_the_simulated_board_disconnects(chooser):
+    win, _ = chooser
+    win.connect_simulated()
+    wait_until(lambda: win.info is not None)
+    settle(win)
+    win.turning_box.setChecked(True)
+    assert win.demo.turning is True
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    assert not win.turning_box.isChecked()

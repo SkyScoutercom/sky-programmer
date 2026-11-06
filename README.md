@@ -25,7 +25,7 @@ It needs Python 3.12 or newer, because PySide6 crashes on older versions. The `s
 
 ```bash
 pipx install --force --editable '.[gui]'   # installs `sky` and `sky-gui`, running from this folder
-sky-gui --simulate                         # try it first: a simulated board, nothing touches hardware
+sky-gui --simulate                         # try it first on a simulated board (also in the app: "Try with a simulated board")
 sky-gui --install-launcher                 # add SKY programmer to the Ubuntu app grid
 sky-gui                                    # the real thing
 ```

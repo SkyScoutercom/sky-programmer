@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QSettings, QSize, Qt, QTimer
@@ -32,6 +33,7 @@ from .board import BoardThread
 from .config_page import ConfigPage
 from .console_page import ConsolePage
 from .dashboard import Dashboard
+from .demo import DemoBoard
 from .prompts import Prompts
 from .updates_page import UpdatesPage
 from .widgets import Banner, Pill
@@ -56,20 +58,20 @@ class MainWindow(QMainWindow):
         self.theme_name = str(self.settings.value("theme", theme.system_theme()))
         theme.apply(self.theme_name)
 
-        self.demo = demo
         self.link_factory = link_factory or (lambda port: Link(open_serial(port)))
-        if demo is not None:
-            self.link_factory = lambda port: Link(demo)
-            ports = lambda: [SIMULATED_PORT]  # noqa: E731
-        self.ports = ports
+        self.ports = ports  # real boards only: the simulated one is always added after them
         self._port_chosen = bool(preset_port)
-        self.backup_dir = str(backup_dir or backup.default_dir())
+        self._real_backup_dir = str(backup_dir or backup.default_dir())
+        self.backup_dir = self._real_backup_dir  # switches to a temporary folder while the simulated board is in use
+        self.demo = None  # the simulated board, while it's the one connected
+        self._next_demo = demo  # started with --simulate: connect to this one first
+        self._sim_dir = None
         self.prompts = prompts or Prompts(self)
         self.board, self.info, self.layout = None, None, None
         self.script_paused = False
         self.code_stale = False
-        # This app's pauses, remembered across a reconnect or restart. The board can't be asked.
-        saved = "" if demo is not None else str(self.settings.value("paused_boards", ""))
+        # This app's pauses of real boards, remembered across a reconnect or restart. The board can't be asked.
+        saved = str(self.settings.value("paused_boards", ""))
         self._paused_uuids: set = {uuid for uuid in saved.split(",") if uuid}
         self._connecting, self._closing = False, False
 
@@ -128,7 +130,7 @@ class MainWindow(QMainWindow):
         self.refresh_ports()
         self._sync()
         if demo is not None:
-            QTimer.singleShot(0, self.connect_board)
+            QTimer.singleShot(0, self.connect_simulated)
 
     # ---------------------------------------------------------------- construction
     def _build_header(self) -> QWidget:
@@ -179,10 +181,8 @@ class MainWindow(QMainWindow):
                                       "deleted when you close the app.")  # fmt: skip
         self.turning_box = QCheckBox("Motor turning")
         self.turning_box.setToolTip("Simulate a turning engine, to see what the app refuses")
+        self.turning_box.toggled.connect(lambda on: self.demo is not None and setattr(self.demo, "turning", on))
         self.demo_banner.row.addWidget(self.turning_box)
-        if self.demo is not None:
-            self.turning_box.toggled.connect(lambda on: setattr(self.demo, "turning", on))
-            self.demo_banner.show()
         self.stale_banner = Banner("warning")
         self.stale_banner.text.setText("<b>⚠ The code in this app's folder changed.</b> Restart before connecting, so "
                                        "the checks that run are the ones in the folder.")  # fmt: skip
@@ -233,7 +233,10 @@ class MainWindow(QMainWindow):
                       "port.<br><b>3.</b> Click <b>Connect</b>.<br><br>Connecting only reads. Nothing changes on the "
                       "board until you confirm a write.")  # fmt: skip
         text.setWordWrap(True)
-        for w in (logo, title, text):
+        self.try_simulated_button = QPushButton("Try with a simulated board")
+        self.try_simulated_button.setToolTip("Everything works as with a real board, and nothing touches hardware")
+        self.try_simulated_button.clicked.connect(self.connect_simulated)
+        for w in (logo, title, text, self.try_simulated_button):
             col.addWidget(w)
         lay.addWidget(card, 0, Qt.AlignmentFlag.AlignCenter)
         return page
@@ -265,17 +268,21 @@ class MainWindow(QMainWindow):
         self._port_chosen = bool(self.port_combo.currentText().strip())
 
     def refresh_ports(self) -> None:
-        """A port the operator chose or typed is never replaced. Otherwise fill in the only board, and never guess."""
+        """A port the operator chose or typed is never replaced. Otherwise fill in the only board, and never guess.
+
+        The simulated board is always offered last, and never chosen automatically.
+        """
         if self.board is not None:
             return
         found = self.ports()
+        items = [*found, SIMULATED_PORT]
         have = [self.port_combo.itemText(i) for i in range(self.port_combo.count())]
-        if found == have:
+        if items == have:
             return
         text = self.port_combo.currentText()
         self.port_combo.blockSignals(True)
         self.port_combo.clear()
-        self.port_combo.addItems(found)
+        self.port_combo.addItems(items)
         if self._port_chosen:
             self.port_combo.setCurrentText(text)
         elif len(found) == 1:
@@ -306,7 +313,19 @@ class MainWindow(QMainWindow):
             self.prompts.error("No port chosen", "Plug in the board, or choose or type its port.")
             return
         self.port_in_use = port
-        self.board = BoardThread(lambda: self.link_factory(port), self.backup_dir, self, set(self._paused_uuids))
+        if port == SIMULATED_PORT:
+            # Its own temporary folder, so a simulated backup can never be taken for a real board's, and no remembered
+            # pause of a real board applies to it.
+            demo, self._next_demo = self._next_demo or DemoBoard(), None
+            if self._sim_dir is None:
+                self._sim_dir = tempfile.TemporaryDirectory(prefix="sky-simulated-", ignore_cleanup_errors=True)
+            self.demo, self.backup_dir = demo, self._sim_dir.name
+            open_link, assume_paused = (lambda: Link(demo)), set()
+        else:
+            self.demo, self.backup_dir = None, self._real_backup_dir
+            open_link, assume_paused = (lambda: self.link_factory(port)), set(self._paused_uuids)
+        self.demo_banner.setVisible(self.demo is not None)
+        self.board = BoardThread(open_link, self.backup_dir, self, assume_paused)
         self.board.opened.connect(self._on_opened)
         self.board.closed.connect(self._on_closed)
         self.board.sample.connect(self._on_sample)
@@ -319,6 +338,13 @@ class MainWindow(QMainWindow):
         self.board.start()
         self._sync()
 
+    def connect_simulated(self) -> None:
+        if self.board is not None:
+            return
+        self.port_combo.setCurrentText(SIMULATED_PORT)
+        self._port_chosen = True
+        self.connect_board()
+
     def disconnect_board(self) -> None:
         if self.board is None or self.board.busy:
             return
@@ -328,7 +354,7 @@ class MainWindow(QMainWindow):
     def _on_opened(self, info: dict) -> None:
         self._connecting = False
         self.info, self.layout = info, info["layout"]
-        self.pill.show_state("ok", "●  Connected")
+        self.pill.show_state("ok", "●  Simulated board" if self.demo is not None else "●  Connected")
         self.set_mode(info["mode"])
         self.baseline_banner.setVisible(info["layout"] is not None and not info["has_baseline"])
         self.note_banner.setVisible(bool(info["note"]))
@@ -351,6 +377,9 @@ class MainWindow(QMainWindow):
             return
         for page in self.board_pages:
             page.reset()
+        self.demo, self.backup_dir = None, self._real_backup_dir
+        self.turning_box.setChecked(False)
+        self.demo_banner.hide()
         self.paused_banner.hide()
         self.baseline_banner.hide()
         self.note_banner.hide()
@@ -375,11 +404,10 @@ class MainWindow(QMainWindow):
     def _on_paused(self, paused: bool) -> None:
         self.script_paused = paused
         self.paused_banner.setVisible(paused)
-        if self.info:
+        if self.info and self.demo is None:  # a simulated board's pause is never remembered as a real one's
             uuid = self.info["ident"]["uuid"]
             (self._paused_uuids.add if paused else self._paused_uuids.discard)(uuid)
-            if self.demo is None:
-                self.settings.setValue("paused_boards", ",".join(sorted(self._paused_uuids)))
+            self.settings.setValue("paused_boards", ",".join(sorted(self._paused_uuids)))
 
     def forget_pause(self) -> None:
         if self.board is not None and self.prompts.confirm_power_cycled():
@@ -536,6 +564,7 @@ class MainWindow(QMainWindow):
             return
         if self.board is None:
             self._ports_timer.stop()
+            self._remove_simulated_backups()
             event.accept()
             return
         if self.board.busy:
@@ -554,4 +583,10 @@ class MainWindow(QMainWindow):
             if not board.wait(10000):  # stuck in the USB driver. No write is running: closing was refused above
                 board.terminate()
                 board.wait(2000)
+        self._remove_simulated_backups()
         event.accept()
+
+    def _remove_simulated_backups(self) -> None:
+        if self._sim_dir is not None:
+            self._sim_dir.cleanup()
+            self._sim_dir = None

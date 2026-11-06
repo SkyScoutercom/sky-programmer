@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import tempfile
 import traceback
 from pathlib import Path
 
@@ -97,13 +96,8 @@ def run(argv=None) -> int:
     app.setStyle("Fusion")
     app.setWindowIcon(theme.app_icon())
 
-    if args.simulate:  # simulated backups must never land next to a real board's
-        with tempfile.TemporaryDirectory(prefix="sky-simulated-") as folder:
-            win = MainWindow(backup_dir=folder, demo=DemoBoard())
-            _show_unexpected_errors(win)
-            win.show()
-            return app.exec()
-    win = MainWindow(backup_dir=args.backup_dir, preset_port=args.port)
+    # The simulated board keeps its backups in a temporary folder of its own, whichever way it's chosen.
+    win = MainWindow(backup_dir=args.backup_dir, preset_port=args.port, demo=DemoBoard() if args.simulate else None)
     _show_unexpected_errors(win)
     win.show()
     return app.exec()
