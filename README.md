@@ -86,3 +86,15 @@ ruff check . && pytest
 
 `tests/fake_vesc.py` is a simulated board with failures on demand, and any forbidden command it receives
 fails the test. `tools/gen_layout.py` generates a firmware's config layout from its sources.
+
+## License
+
+Copyright (C) 2026 SkyScouter
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It
+is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for details.
+
+The config layouts in `src/sky_programmer/layouts` are generated from the [VESC firmware](https://github.com/vedderb/bldc),
+which is also licensed under GPL-3.0.
