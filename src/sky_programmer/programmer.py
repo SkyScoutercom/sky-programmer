@@ -142,7 +142,8 @@ class Programmer:
             raise SafetyRefusal(
                 "the live config differs from this board's last SKY backup:\n" + lines + "\n"
                 "A write stores all of it, including temporary changes made by a script. Power-cycle to clear those, "
-                "or pass --accept-drift to store them.")
+                "or pass --accept-drift to store them. A script that sets values at power-up shows the same "
+                "differences after a power-cycle, so check the script before accepting them.")
 
     # ---------------------------------------------------------------------- planning
     def plan_set(self, changes: dict, *, accept_drift=False, allow_default_foc=False, allow_risky=False) -> Plan:

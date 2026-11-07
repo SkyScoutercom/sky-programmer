@@ -20,12 +20,25 @@ from .safety import check_packet
 
 WRITE_TIMEOUT_S = 2.0  # a wedged USB link must become an error, never a hang
 
-# Two programs reading one port each take some of the other's replies. pyserial says this when its read finds nothing.
-_SHARED_PORT_SIGNS = ("multiple access", "returned no data")
+# pyserial raises the same error when its read finds nothing for two different reasons: the board was unplugged or
+# reset, or another program read the bytes first. The bench showed both, so the message has to tell them apart.
+_EMPTY_READ_SIGNS = ("multiple access", "returned no data")
 SHARED_PORT_HINT = ("Another program is reading this port at the same time, so replies go missing. Close it and "
-                    "connect again. On Ubuntu, ModemManager also tests a newly plugged-in board for a few seconds: "
-                    "wait a moment and connect again, or stop it for good with packaging/linux/99-sky-programmer.rules "
-                    "(see the README).")  # fmt: skip
+                    "connect again.")  # fmt: skip
+UNSEEN_READER_HINT = ("The board stopped answering, but its port is still there. Either it reset or lost power, or "
+                      "another program is reading the port: on Ubuntu, ModemManager tests a newly plugged-in board for "
+                      "a few seconds. Wait a moment and connect again, and see packaging/linux/99-sky-programmer.rules "
+                      "in the README to stop ModemManager for good.")  # fmt: skip
+
+
+def _empty_read_reason(port: str) -> str:
+    """Why a read found nothing, from what can be seen now."""
+    if port and not os.path.exists(port):
+        return "the board's USB connection was lost: it was unplugged, or the board lost power or reset."
+    users = port_users(port) if port else []
+    if users:
+        return f"{SHARED_PORT_HINT} Open in: {'; '.join(users)}."
+    return UNSEEN_READER_HINT
 
 
 def _describe_process(pid: str) -> str:
@@ -135,10 +148,8 @@ class Link:
         try:
             self._buf += self.ser.read(4096)
         except OSError as e:
-            if any(sign in str(e) for sign in _SHARED_PORT_SIGNS):
-                users = port_users(getattr(self.ser, "port", None) or "")
-                named = f" Open in: {'; '.join(users)}." if users else ""
-                raise CommsError(f"USB read failed. {SHARED_PORT_HINT}{named}") from e
+            if any(sign in str(e) for sign in _EMPTY_READ_SIGNS):
+                raise CommsError(f"USB read failed: {_empty_read_reason(getattr(self.ser, 'port', None) or '')}") from e
             raise CommsError(f"USB read failed: {e}") from e
         replies, i = [], 0
         while i < len(self._buf):

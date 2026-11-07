@@ -45,7 +45,7 @@ It can't promise everything:
 | Wrong layout: values land in the wrong fields | Layout differs per firmware | Exact firmware match only, plus signature and size checks; no fallback, no download at runtime |
 | Power loss during a config write | Stored with a CRC. On a bad CRC the firmware loads defaults (`conf_general_read_mc_configuration`) | Backup always taken first; `sky restore` fixes it |
 | Bad value, e.g. flux = -2 or odd pole count | Firmware only limits some fields | Rules refuse new invalid values |
-| Writing while the motor turns | The firmware releases the motor during the write | Refused unless idle on two samples, checked before the script is paused and again before writing |
+| Writing while the motor turns | The firmware releases the motor during the write | Refused unless idle on two samples, checked before the script is paused and again before writing. The speed comes from the motor's own voltage, so very slow turning can't be seen: on the bench, turning the engine by hand read 12 erpm at most. A running engine reads tens of thousands |
 | Script changing things during a write | `conf-set` changes live config | Script paused before writing; a failed pause stops the write; config read twice and compared |
 | Storing a script's temporary changes | A write stores the whole live config | Refused with no baseline backup, or with differences from the last one, unless `--accept-drift`. `sky backup` refuses the same differences, since a new backup would accept them. Pre-write backups don't count as a baseline |
 | Weak supply during a flash write | Brown-out can interrupt it | Bus voltage must be inside the configured range (USB-only power is allowed) |

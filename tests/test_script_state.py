@@ -37,18 +37,46 @@ def test_a_port_already_open_in_another_program_is_refused_and_named():
     assert port_users(path) == []
 
 
-def test_a_shared_port_read_error_says_what_is_going_on():
-    from sky_programmer.link import Link
+EMPTY_READ = "device reports readiness to read but returned no data (device disconnected or multiple access on port?)"
 
-    class SharedPort:
-        port = "/dev/sky-test-none"
+
+def _empty_read_port(path):
+    class Port:
+        port = str(path)
 
         def read(self, n):
-            raise OSError("device reports readiness to read but returned no data "
-                          "(device disconnected or multiple access on port?)")  # fmt: skip
+            raise OSError(EMPTY_READ)
 
-    with pytest.raises(CommsError, match="Another program is reading this port.*ModemManager"):
-        Link(SharedPort()).drain()
+    return Port()
+
+
+def test_an_unplugged_board_is_called_unplugged_not_shared(tmp_path):
+    """The bench: pulling the cable gave pyserial's 'multiple access' text, and the app blamed another program."""
+    from sky_programmer.link import Link
+
+    with pytest.raises(CommsError, match="USB connection was lost") as caught:
+        Link(_empty_read_port(tmp_path / "ttyACM0-gone")).drain()
+    assert "Another program" not in str(caught.value)
+
+
+def test_a_port_held_by_a_visible_program_names_it(tmp_path, monkeypatch):
+    from sky_programmer import link
+
+    port = tmp_path / "ttyACM0"
+    port.write_text("")
+    monkeypatch.setattr(link, "port_users", lambda p: ["python3 tools/read_trace.py (process 4242)"])
+    with pytest.raises(CommsError, match="Another program is reading this port.*read_trace.py.*4242"):
+        link.Link(_empty_read_port(port)).drain()
+
+
+def test_a_port_that_is_there_with_no_visible_reader_gives_both_causes(tmp_path, monkeypatch):
+    from sky_programmer import link
+
+    port = tmp_path / "ttyACM0"
+    port.write_text("")
+    monkeypatch.setattr(link, "port_users", lambda p: [])
+    with pytest.raises(CommsError, match="reset or lost power, or another program.*ModemManager"):
+        link.Link(_empty_read_port(port)).drain()
 
 
 def test_other_read_errors_keep_their_own_message():
