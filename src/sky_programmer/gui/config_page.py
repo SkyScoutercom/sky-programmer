@@ -163,16 +163,22 @@ class FieldTable(QTableWidget):
         if not self._loading and item.column() == VALUE:
             self._edited(self.item(item.row(), FIELD).data(FIELD_ROLE))
 
+    def _dropdown(self, row: int):
+        """The cell's dropdown, or None. While a cell is being typed in, Qt reports its text editor as the cell's
+        widget too, so only a dropdown counts here: the bench found that editor being taken for one."""
+        widget = self.cellWidget(row, VALUE)
+        return widget if isinstance(widget, QComboBox) else None
+
     def text_of(self, field: str) -> str:
         row = self.rows[field]
-        widget = self.cellWidget(row, VALUE)
-        return (widget.currentText() if widget else self.item(row, VALUE).text()).strip()
+        dropdown = self._dropdown(row)
+        return (dropdown.currentText() if dropdown else self.item(row, VALUE).text()).strip()
 
     def set_value(self, field: str, text: str) -> None:
         row = self.rows[field]
-        widget = self.cellWidget(row, VALUE)
-        if widget:
-            widget.setCurrentText(text)
+        dropdown = self._dropdown(row)
+        if dropdown:
+            dropdown.setCurrentText(text)
         else:
             self.item(row, VALUE).setText(text)
 

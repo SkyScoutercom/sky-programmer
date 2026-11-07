@@ -509,6 +509,33 @@ def test_app_config_is_read_only(gui):
                 or table.item(r, VALUE).flags() & table.item(r, VALUE).flags().ItemIsEditable]
 
 
+def test_typing_a_value_into_a_cell_stages_it(gui):
+    """The bench: typing 84 and pressing Enter raised AttributeError, because Qt reports the open text editor as the
+    cell's widget while it commits, and the table took it for a dropdown. Nothing was written, but nothing worked."""
+    from PySide6.QtCore import Qt as QtKeys
+    from PySide6.QtTest import QTest
+
+    win, fake, _ = gui()
+    win.nav.setCurrentRow(1)
+    QApplication.processEvents()
+    table = win.config_page.motor
+    row = table.rows["l_temp_fet_start"]
+    table.setCurrentCell(row, VALUE)
+    table.editItem(table.item(row, VALUE))
+    QApplication.processEvents()
+    editor = QApplication.focusWidget()
+    assert editor is not None and editor is not table
+    editor.selectAll()
+    QTest.keyClicks(editor, "84")
+    QTest.keyClick(editor, QtKeys.Key.Key_Return)
+    QApplication.processEvents()
+    assert table.staged == {"l_temp_fet_start": "84"}
+    assert win.config_page.review_button.isEnabled()
+    win.config_page.review()
+    settle(win)
+    assert fake.value("l_temp_fet_start") == 84
+
+
 def test_nonsense_input_is_caught_in_the_table(gui):
     win, _, _ = gui()
     table = win.config_page.motor
