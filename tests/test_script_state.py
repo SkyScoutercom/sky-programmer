@@ -9,6 +9,60 @@ from sky_programmer.errors import CommsError, SafetyRefusal, VerifyFailed
 from sky_programmer.link import open_serial
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="reads /proc")
+def test_a_port_already_open_in_another_program_is_refused_and_named():
+    """What happened on the bench: a trace recorder held the VESC's port without a lock, and both lost replies."""
+    import pty
+    import subprocess
+    import time
+
+    from sky_programmer.link import port_users
+
+    master, slave = pty.openpty()
+    path = os.ttyname(slave)
+    holder = subprocess.Popen([sys.executable, "-c",
+                               f"import time; f = open({path!r}, 'rb', buffering=0); time.sleep(30)"])  # fmt: skip
+    try:
+        deadline = time.monotonic() + 10
+        while not port_users(path) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert any(f"process {holder.pid}" in user for user in port_users(path))
+        with pytest.raises(CommsError, match=f"already open in another program: .*process {holder.pid}"):
+            open_serial(path)
+    finally:
+        holder.kill()
+        holder.wait()
+        os.close(slave)
+        os.close(master)
+    assert port_users(path) == []
+
+
+def test_a_shared_port_read_error_says_what_is_going_on():
+    from sky_programmer.link import Link
+
+    class SharedPort:
+        port = "/dev/sky-test-none"
+
+        def read(self, n):
+            raise OSError("device reports readiness to read but returned no data "
+                          "(device disconnected or multiple access on port?)")  # fmt: skip
+
+    with pytest.raises(CommsError, match="Another program is reading this port.*ModemManager"):
+        Link(SharedPort()).drain()
+
+
+def test_other_read_errors_keep_their_own_message():
+    from sky_programmer.link import Link
+
+    class Unplugged:
+        def read(self, n):
+            raise OSError("[Errno 5] Input/output error")
+
+    with pytest.raises(CommsError, match="Input/output error") as caught:
+        Link(Unplugged()).drain()
+    assert "Another program" not in str(caught.value)
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="uses a Linux pseudo-terminal")
 def test_nothing_else_can_open_the_port_while_it_is_in_use():
     import pty

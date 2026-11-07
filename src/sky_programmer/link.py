@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import glob
+import os
 import re
 import sys
 import time
@@ -18,6 +19,47 @@ from .errors import CommsError, SafetyRefusal
 from .safety import check_packet
 
 WRITE_TIMEOUT_S = 2.0  # a wedged USB link must become an error, never a hang
+
+# Two programs reading one port each take some of the other's replies. pyserial says this when its read finds nothing.
+_SHARED_PORT_SIGNS = ("multiple access", "returned no data")
+SHARED_PORT_HINT = ("Another program is reading this port at the same time, so replies go missing. Close it and "
+                    "connect again. On Ubuntu, ModemManager also tests a newly plugged-in board for a few seconds: "
+                    "wait a moment and connect again, or stop it for good with packaging/linux/99-sky-programmer.rules "
+                    "(see the README).")  # fmt: skip
+
+
+def _describe_process(pid: str) -> str:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            args = f.read().replace(b"\0", b" ").decode(errors="replace").strip()
+    except OSError:
+        args = "?"
+    return f"{args[:90]} (process {pid})"
+
+
+def port_users(port: str) -> list[str]:
+    """Other programs of this user that have the port open. Linux only, and processes of other users can't be seen."""
+    if not sys.platform.startswith("linux"):
+        return []
+    try:
+        target = os.path.realpath(port)
+        pids = [pid for pid in os.listdir("/proc") if pid.isdigit() and int(pid) != os.getpid()]
+    except OSError:
+        return []
+    users = []
+    for pid in pids:
+        try:
+            fds = os.listdir(f"/proc/{pid}/fd")
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                if os.path.realpath(f"/proc/{pid}/fd/{fd}") == target:
+                    users.append(_describe_process(pid))
+                    break
+            except OSError:
+                continue
+    return users
 
 
 def _port_number(name: str) -> int:
@@ -56,6 +98,11 @@ def open_serial(port: str):
                     pass
             super().close()
 
+    # The lock below only stops programs that also lock, so look for any that already have the port open.
+    users = port_users(port)
+    if users:
+        raise CommsError(f"{port} is already open in another program: {'; '.join(users)}. Close it, then connect "
+                         "again: two programs reading one board each lose some of its replies.")  # fmt: skip
     try:
         ser = ExclusiveSerial(port, 115200, timeout=0.05, write_timeout=WRITE_TIMEOUT_S, exclusive=True)
         # exclusive= is only an advisory lock, so a program opening the port after us could still take the replies.
@@ -88,6 +135,10 @@ class Link:
         try:
             self._buf += self.ser.read(4096)
         except OSError as e:
+            if any(sign in str(e) for sign in _SHARED_PORT_SIGNS):
+                users = port_users(getattr(self.ser, "port", None) or "")
+                named = f" Open in: {'; '.join(users)}." if users else ""
+                raise CommsError(f"USB read failed. {SHARED_PORT_HINT}{named}") from e
             raise CommsError(f"USB read failed: {e}") from e
         replies, i = [], 0
         while i < len(self._buf):

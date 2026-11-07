@@ -50,6 +50,19 @@ overrides (`--allow-risky`, `--accept-drift`, `--allow-default-foc-params`, `--a
 `--force`), so those stay deliberate terminal commands. Fields that always need one are locked in the table, with the
 reason beside them. See [SAFETY.md](SAFETY.md#the-desktop-app).
 
+### Ubuntu: stop ModemManager taking the board
+
+After a VESC is plugged in, Ubuntu's ModemManager opens its port for a few seconds to test it as a modem, and the app
+loses replies while it does. Stop it for VESC boards once:
+
+```bash
+sudo cp packaging/linux/99-sky-programmer.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+```
+
+Then unplug the board and plug it back in. The app also refuses to connect while another program of yours, such as a
+`sky` command or a script, has the port open, and names it.
+
 ### Windows
 
 Get `SKY-programmer-setup-<version>.exe` from the **Windows build** run on GitHub (Actions, then Artifacts) and run it.

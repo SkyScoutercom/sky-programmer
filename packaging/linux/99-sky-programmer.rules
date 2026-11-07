@@ -1,0 +1,8 @@
+# Stop ModemManager testing VESC boards as modems. A VESC is an STM32 virtual COM port (USB 0483:5740). After it's
+# plugged in, ModemManager opens the port for a few seconds, and while it does, it takes replies meant for
+# SKY programmer or VESC Tool, which then lose contact with the board.
+#
+# Install:  sudo cp packaging/linux/99-sky-programmer.rules /etc/udev/rules.d/
+#           sudo udevadm control --reload-rules
+# then unplug and plug the board back in.
+ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", ENV{ID_MM_DEVICE_IGNORE}="1"
