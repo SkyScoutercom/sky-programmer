@@ -13,7 +13,7 @@ from . import APP_NAME, __version__, backup, config
 from .config import APP_ROOT, MC_ROOT
 from .errors import SafetyRefusal, SkyError
 from .link import Link, find_port, open_serial
-from .programmer import IDLE_MAX_ERPM, Programmer
+from .programmer import MONITOR_COLUMNS, Programmer
 
 ENGINE_PROMPT = "Engine stopped, propeller clear, supply stable? Type YES to write: "
 
@@ -25,7 +25,7 @@ def _banner() -> None:
     """Show the brand in a real terminal only, so piped output and logs stay plain. Honours NO_COLOR."""
     if not sys.stdout.isatty():
         return
-    if os.environ.get("NO_COLOR"):
+    if os.environ.get("NO_COLOR") or sys.platform == "win32":  # an older Windows console prints the codes as text
         print(APP_NAME)
     else:
         print(f"\033[1;{LOGO_LIGHT}mS\033[1;{LOGO_DARK}mK\033[0m  {APP_NAME} {__version__}  |  SkyScouter")
@@ -49,7 +49,8 @@ def _print_plan(prog, plan) -> None:
     lay = prog.layout()
     print("Planned changes:")
     for k, (a, b) in sorted(plan.diff.items()):
-        print(f"  {k}: {config.show(lay, MC_ROOT, k, a)} -> {config.show(lay, MC_ROOT, k, b)}")
+        left, right = config.show_pair(lay, MC_ROOT, k, a, b)
+        print(f"  {k}: {left} -> {right}")
     for w in plan.warnings:
         print(f"Warning: {w}")
 
@@ -92,7 +93,7 @@ def cmd_status(prog, args) -> int:
 
 
 def cmd_monitor(prog, args) -> int:
-    cols = ["t", "erpm", "duty", "motor_a", "input_a", "bus_v", "fet_c", "motor_c", "fault"]
+    cols = MONITOR_COLUMNS
     out = None
     f = open(args.log, "w", newline="") if args.log else None
     try:
@@ -103,8 +104,7 @@ def cmd_monitor(prog, args) -> int:
         t0 = time.monotonic()
         while not args.seconds or time.monotonic() - t0 < args.seconds:
             v = prog.values()
-            row = [f"{time.monotonic() - t0:.1f}", v["erpm"], v["duty"], v["current_motor"], v["current_in"],
-                   v["v_in"], v["temp_fet"], v["temp_motor"], prog.fault_name(v["fault_code"])]
+            row = prog.monitor_row(v, time.monotonic() - t0)
             print("  ".join(str(c).rjust(8) for c in row))
             for text in prog.link.collect_prints(args.period):
                 print(f"[board] {text}")
@@ -150,6 +150,12 @@ def cmd_set(prog, args) -> int:
 
 
 def cmd_backup(prog, args) -> int:
+    drift = prog.baseline_drift()
+    if drift and not args.accept_drift:
+        raise SafetyRefusal(
+            f"{', '.join(sorted(drift))} differ from this board's last backup, and a new backup would make them its "
+            "settings, so the next write would store a script's temporary changes. Power-cycle to clear those, or "
+            "pass --accept-drift if you changed them on purpose.")
     print(f"Backup saved: {prog.save_backup()}")
     return 0
 
@@ -161,13 +167,8 @@ def cmd_backups(prog, args) -> int:
 
 
 def cmd_diff(prog, args) -> int:
-    doc = backup.load(args.file)
-    ident = prog.identify()
-    if doc["fw"] != ident["fw"]:
-        raise SafetyRefusal(f"this backup is from firmware {doc['fw']}, the board runs {ident['fw']}.")
+    diff = prog.compare_backup(backup.load(args.file))
     lay = prog.layout()
-    saved = config.decode(doc["mc_blob"], lay, MC_ROOT)
-    diff = config.differences(saved, prog.read_conf(MC_ROOT))
     if not diff:
         print("The board matches this backup.")
     for k, (a, b) in sorted(diff.items()):
@@ -187,12 +188,7 @@ def cmd_restore(prog, args) -> int:
 
 
 def cmd_stop(prog, args) -> int:
-    v = prog.values()
-    if abs(v["erpm"]) > IDLE_MAX_ERPM and not args.force:
-        raise SafetyRefusal(
-            f"the motor is turning ({v['erpm']} erpm), so the engine may be running. Pausing the script takes away "
-            "its throttle and kill control and leaves the servo where it is. Kill the engine with the RC switch. "
-            "--force overrides this.")
+    prog.check_can_stop(force=args.force)
     paused = prog.stop()
     print("Script paused, motor released." if paused else "No script on the board, motor released.")
     print("Note: C libraries' own threads keep running. This does not stop the engine.")
@@ -200,9 +196,7 @@ def cmd_stop(prog, args) -> int:
 
 
 def cmd_start(prog, args) -> int:
-    v = prog.values()
-    if abs(v["erpm"]) > IDLE_MAX_ERPM:
-        raise SafetyRefusal(f"the motor is turning ({v['erpm']} erpm). Stop it before restarting the script.")
+    prog.check_can_start()
     _confirm(args, "This runs the script stored on the board, which may move the motor or servo. Type YES: ")
     print("Script started." if prog.start() else "Could not start: is a script stored on the board?")
     return 0
@@ -244,7 +238,7 @@ def cmd_repl(prog, args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="sky", description=f"{APP_NAME}: read and configure VESC motor controllers.")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
-    ap.add_argument("--port", default=os.environ.get("SKY_PORT"), help="serial port, default: the only /dev/ttyACM*")
+    ap.add_argument("--port", default=os.environ.get("SKY_PORT"), help="serial port, default: the only board found")
     ap.add_argument("--backup-dir", default=None, help=f"default: {backup.default_dir()}")
     sub = ap.add_subparsers(dest="command", required=True)
 
@@ -274,7 +268,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("changes", nargs="+", metavar="field=value")
     sp.add_argument("--accept-drift", action="store_true", help="also store differences from the last backup")
     add_write_flags(sp)
-    add("backup", cmd_backup, "save the motor and app config to a file")
+    sp = add("backup", cmd_backup, "save the motor and app config to a file")
+    sp.add_argument("--accept-drift", action="store_true", help="also accept differences from the last backup")
     add("backups", cmd_backups, "list this board's backups")
     sp = add("diff", cmd_diff, "compare the board's motor config with a backup")
     sp.add_argument("file")

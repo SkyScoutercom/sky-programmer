@@ -50,6 +50,36 @@ Do this with the engine stopped, since FOC start-up calibration drives the phase
 3. Check with `sky status`, then power-cycle and check again.
 4. Go back with `sky set motor_type=BLDC`.
 
+## E. Desktop app
+
+Only after A to C pass. Start it with `sky-gui`, and use the same setup: engine stopped, propeller off.
+
+| # | Action | Expect |
+|---|---|---|
+| 20 | Connect | Same board name, firmware and mode as `sky status`. Live values update |
+| 21 | Turn the motor by hand | Speed changes on the tile and chart |
+| 22 | Open Configuration | `l_current_max` and `l_abs_current_max` match VESC Tool |
+| 23 | Change `l_temp_fet_start` to 84, then Review & write, then type YES | Paused banner appears. Reads back 84 |
+| 24 | Power-cycle, reconnect | Still 84. The banner still says "may be paused", because the app can't see a power-cycle. Click "I power-cycled it…" |
+| 25 | Backups: restore the backup from before step 23 | One field changes back |
+| 26 | Unplug USB while connected | Clear message, back to the welcome screen, no hang |
+| 27 | With VESC Tool connected, try to connect | Clear "cannot open" message |
+| 28 | Pause script while turning the motor by hand fast | Refused above about 200 erpm |
+| 29 | While connected here, try to connect VESC Tool | VESC Tool can't open the port |
+| 30 | Pause script, type YES, then watch something the script visibly does | It stops, and the banner appears |
+| 31 | With the script paused, disconnect and reconnect without power-cycling | The banner comes back, and a REPL line asks first |
+
+## F. Windows
+
+Windows has its own USB and serial behaviour, so a pass on Linux doesn't carry over. Install it, then repeat A to C with
+`sky.exe` and E with the app, using the board's COM port. Check these as well:
+
+| # | Action | Expect |
+|---|---|---|
+| 32 | Plug the board in with the app open | Its COM port appears within a few seconds. Bluetooth COM ports aren't listed |
+| 33 | Power-cycle after a write, reconnect | The value is still there, as in step 13 |
+| 34 | Pull the USB cable during live values | Clear message, back to the welcome screen, no hang |
+
 Please send back any step that didn't match, with its output. Steps 6, 7, 11, 13, 15 and 17 test assumptions the
 simulated board can't confirm.
 

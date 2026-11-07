@@ -2,10 +2,11 @@
 
 # SKY programmer
 
-SkyScouter's terminal tool for reading and configuring VESC motor controllers.
+SkyScouter's terminal and desktop tool for reading and configuring VESC motor controllers.
 
-**Status: stage 1, not yet tested on a real board.** It is tested against a simulated VESC. Follow
-[docs/BENCH_TEST.md](docs/BENCH_TEST.md) on the bench before relying on it.
+**Status: stage 1, bench-tested on one board.** Reading, writing, restoring and the safety checks passed on a
+Flipsky_110_100 on Ubuntu: see [docs/BENCH_RESULTS.md](docs/BENCH_RESULTS.md). BLDC to FOC and Windows haven't been run
+on hardware yet. On another board, follow [docs/BENCH_TEST.md](docs/BENCH_TEST.md) on the bench before relying on it.
 
 It supports VESC firmware **7.00**. Other firmware can still use `status`, but config access is refused.
 
@@ -19,6 +20,62 @@ sky --version
 Close VESC Tool first, since only one program can use the port. Set the port with `--port` or `SKY_PORT`
 if more than one board is plugged in.
 
+## Desktop app
+
+It needs Python 3.12 or newer, because PySide6 crashes on older versions. The `sky` command works from Python 3.10.
+
+```bash
+pipx install --force --editable '.[gui]'   # installs `sky` and `sky-gui`, running from this folder
+sky-gui --simulate                         # try it first on a simulated board (also in the app: "Try with a simulated board")
+sky-gui --install-launcher                 # add SKY programmer to the Ubuntu app grid
+sky-gui                                    # the real thing
+```
+
+| Page | What it does |
+|---|---|
+| Dashboard | Live values and charts, CSV recording, pause and start the script |
+| Configuration | Browse and search motor config, edit, review and write. App config is read only |
+| Backups | Back up, compare with the board, restore |
+| Console | Board messages, read-only terminal commands, the filtered REPL |
+| Updates | Status, pull and reset for this source folder, as on the SKY kiosk. Works with no board connected |
+
+The ☀/☾ button in the header switches between day and night, and the app remembers your choice.
+
+**Updates.** Pull only moves forward, so if this folder and GitHub have both changed, nothing is merged. Reset makes the
+folder match GitHub after you've seen what would be lost and typed `RESET`. Both need the board disconnected, and if the
+app runs from that folder you must restart it before connecting again. It uses your normal git login: if a pull can't
+log in, run `gh auth setup-git`.
+
+It runs the same engine and the same checks as `sky`, and a write always ends in a typed `YES`. It offers none of the
+overrides (`--allow-risky`, `--accept-drift`, `--allow-default-foc-params`, `--allow-other-board`, `--allow-motor`,
+`--force`), so those stay deliberate terminal commands. Fields that always need one are locked in the table, with the
+reason beside them. See [SAFETY.md](SAFETY.md#the-desktop-app).
+
+### Ubuntu: stop ModemManager taking the board
+
+After a VESC is plugged in, Ubuntu's ModemManager opens its port for a few seconds to test it as a modem, and the app
+loses replies while it does. Stop it for VESC boards once:
+
+```bash
+sudo cp packaging/linux/99-sky-programmer.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+```
+
+Then unplug the board and plug it back in. The app also refuses to connect while another program of yours, such as a
+`sky` command or a script, has the port open, and names it.
+
+### Windows
+
+Get `SKY-programmer-setup-<version>.exe` from the **Windows build** run on GitHub (Actions, then Artifacts) and run it.
+It needs no administrator rights, and it adds SKY programmer and a terminal shortcut to the Start menu. There's also a
+portable zip: unzip it and run `SKY programmer.exe`. The build isn't code-signed yet, so Windows SmartScreen warns that
+the publisher is unknown: choose **More info**, then **Run anyway**.
+
+The port is a USB COM port, such as `COM7`. Backups are in `%LOCALAPPDATA%\sky-programmer\backups`. A packaged build has
+no Updates page: a new version is a new download. `sky.exe` is the terminal tool, in the same folder.
+
+To check an install, run `"SKY programmer.exe" --self-test report.txt`. It uses a simulated board and touches no hardware.
+
 ## Commands
 
 | Command | What it does |
@@ -27,7 +84,7 @@ if more than one board is plugged in.
 | `sky monitor [--log run.csv] [--seconds N]` | Live values and messages printed by scripts or C code |
 | `sky get [pattern] [--app] [--json]` | Read config fields, e.g. `sky get 'foc_*'` |
 | `sky set field=value ...` | Change motor config, e.g. `sky set motor_type=FOC` |
-| `sky backup` / `sky backups` | Save the motor and app config / list saved files |
+| `sky backup [--accept-drift]` / `sky backups` | Save the motor and app config / list saved files |
 | `sky diff <file>` | Compare the board with a backup |
 | `sky restore <file>` | Write a backup's motor config back |
 | `sky stop` / `sky start` | Pause the script and release the motor / run the stored script |
@@ -70,7 +127,7 @@ hang a board at boot are refused with no override.
 
 ## Roadmap
 
-1. **Done, pending bench test:** status, monitor, get/set, backup/restore, REPL.
+1. **Done, pending bench test:** status, monitor, get/set, backup/restore, REPL, in the terminal and the desktop app.
 2. **C workflow:** build and upload C native libraries, running from RAM first.
 3. **Independent of VESC Tool:** own uploader and motor detection.
 4. **Firmware flashing:** last, and only with the checks listed in SAFETY.md.
@@ -84,5 +141,17 @@ pip install -e ".[dev]"
 ruff check . && pytest
 ```
 
-`tests/fake_vesc.py` is a simulated board with failures on demand, and any forbidden command it receives
-fails the test. `tools/gen_layout.py` generates a firmware's config layout from its sources.
+`src/sky_programmer/simulator.py` is a simulated board with failures on demand, and any forbidden command it receives
+fails the test. Desktop tests run the real window with no display (`QT_QPA_PLATFORM=offscreen`). `tools/gen_layout.py` generates a firmware's config layout from its sources.
+
+## License
+
+Copyright (C) 2026 SkyScouter
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It
+is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for details.
+
+The config layouts in `src/sky_programmer/layouts` are generated from the [VESC firmware](https://github.com/vedderb/bldc),
+which is also licensed under GPL-3.0.
