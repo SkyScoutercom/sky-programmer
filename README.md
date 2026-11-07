@@ -66,10 +66,13 @@ Then unplug the board and plug it back in. The app also refuses to connect while
 
 ### Windows
 
-Get `SKY-programmer-setup-<version>.exe` from the **Windows build** run on GitHub (Actions, then Artifacts) and run it.
-It needs no administrator rights, and it adds SKY programmer and a terminal shortcut to the Start menu. There's also a
-portable zip: unzip it and run `SKY programmer.exe`. The build isn't code-signed yet, so Windows SmartScreen warns that
-the publisher is unknown: choose **More info**, then **Run anyway**.
+1. Open the [Releases page](https://github.com/SkyScoutercom/sky-programmer/releases). No GitHub account is needed.
+2. Under the newest release, open **Assets** and download `SKY-programmer-setup-<version>.exe`.
+3. Run it. It needs no administrator rights, and it adds SKY programmer and a terminal shortcut to the Start menu.
+
+The installer isn't code-signed yet, so Windows SmartScreen warns that the publisher is unknown: choose **More info**,
+then **Run anyway**. Every push to `stage-1` also builds an installer and a portable zip under Actions, but downloading
+those needs a GitHub login.
 
 The port is a USB COM port, such as `COM7`. Backups are in `%LOCALAPPDATA%\sky-programmer\backups`. A packaged build has
 no Updates page: a new version is a new download. `sky.exe` is the terminal tool, in the same folder.
