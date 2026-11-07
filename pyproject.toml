@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sky-programmer"
-version = "0.1.1"
+version = "0.1.2"
 description = "SKY programmer: SkyScouter's terminal and desktop tool for reading and configuring VESC motor controllers"
 requires-python = ">=3.10"
 license = {text = "GPL-3.0-or-later"}
