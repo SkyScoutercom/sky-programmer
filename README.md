@@ -4,8 +4,9 @@
 
 SkyScouter's terminal and desktop tool for reading and configuring VESC motor controllers.
 
-**Status: stage 1, not yet tested on a real board.** It is tested against a simulated VESC. Follow
-[docs/BENCH_TEST.md](docs/BENCH_TEST.md) on the bench before relying on it.
+**Status: stage 1, bench-tested on one board.** Reading, writing, restoring and the safety checks passed on a
+Flipsky_110_100 on Ubuntu: see [docs/BENCH_RESULTS.md](docs/BENCH_RESULTS.md). BLDC to FOC and Windows haven't been run
+on hardware yet. On another board, follow [docs/BENCH_TEST.md](docs/BENCH_TEST.md) on the bench before relying on it.
 
 It supports VESC firmware **7.00**. Other firmware can still use `status`, but config access is refused.
 

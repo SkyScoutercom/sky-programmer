@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
         self.progress.setTextVisible(False)
         self.progress.hide()
         self.statusBar().addPermanentWidget(self.progress)
-        self.statusBar().addPermanentWidget(QLabel("Stage 1. Not yet bench-tested on a real board."))
+        self.statusBar().addPermanentWidget(QLabel("Stage 1. Bench-tested on one board: see docs/BENCH_RESULTS.md"))
 
         self._ports_timer = QTimer(self)
         self._ports_timer.timeout.connect(self.refresh_ports)
