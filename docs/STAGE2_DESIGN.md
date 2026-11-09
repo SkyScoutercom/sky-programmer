@@ -73,7 +73,9 @@ backup can be restored.
 
 ## Open questions
 
-The spec lists nine. The ones that matter before a bench test:
-- Which firmware commit the board runs: compare `sky term fw_info`'s Git hash with `e877eae`.
-- How long an erase takes on this board.
-- Whether the Flipsky 110100 exposes HALL2 and SWCLK for the recovery jumper.
+The spec lists nine. The bench test on 2026-11-09 ([BENCH_RESULTS.md](BENCH_RESULTS.md)) answered two:
+- Firmware commit: the board runs `20cbb362`, 4 commits behind `e877eae` with no change to the upload code.
+- Erase time: a few seconds, inside the 12 s the tool waits.
+
+Still open before native-library uploads (step 3):
+- Whether the Flipsky 110100 exposes HALL2 and SWCLK for the recovery jumper, and whether an SWD programmer is at hand.

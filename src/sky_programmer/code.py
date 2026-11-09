@@ -245,12 +245,16 @@ def store(prog, content: bytes, reason: str = "pre-store") -> dict:
         raise SafetyRefusal("the script doesn't fit the code area.")
     require_vesc_hardware(prog)
     link = prog.link
-    conf = prog.read_conf(MC_ROOT)
-    prog.require_idle(conf)  # first: every erase and write releases the motor for 5 s
-    old = read_code(prog)
-    code_backup = save_backup(prog, old, reason)
-    config_backup = prog.save_backup("pre-code")  # the new script may change config in RAM when it starts
-    prog.require_idle(conf)
+    try:
+        conf = prog.read_conf(MC_ROOT)
+        prog.require_idle(conf)  # first: every erase and write releases the motor for 5 s
+        old = read_code(prog)
+        code_backup = save_backup(prog, old, reason)
+        config_backup = prog.save_backup("pre-code")  # the new script may change config in RAM when it starts
+        prog.require_idle(conf)
+    except CommsError as e:  # the bench showed a cable pulled here otherwise reads like a failed store
+        raise CommsError(f"{str(e).rstrip('.')}. This was before the erase, so nothing was written and the stored "
+                         "script is unchanged.") from e  # fmt: skip
 
     prog.script_paused = True  # the erase stops the running script, even if the erase then fails
     try:

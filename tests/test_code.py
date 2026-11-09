@@ -213,6 +213,19 @@ def test_a_failed_backup_stops_before_the_erase(board, monkeypatch):
     assert fake.code_erases == 0 and fake.code_writes == []
 
 
+def test_a_lost_link_before_the_erase_says_nothing_changed(board, monkeypatch):
+    """Bench step 44: a cable pulled while the old script was being read back up."""
+    fake, prog = board()
+
+    def unplugged(_prog):
+        raise CommsError("USB read failed: the board's USB connection was lost.")
+
+    monkeypatch.setattr(code, "read_code", unplugged)
+    with pytest.raises(CommsError, match="before the erase, so nothing was written"):
+        code.store(prog, code.pack(SCRIPT))
+    assert fake.code_erases == 0 and fake.stored_content() == code.pack(STORED_SCRIPT)
+
+
 def test_a_failed_erase_writes_nothing(board):
     fake, prog = board(code_erase_fails=True)
     with pytest.raises(VerifyFailed, match="restore"):
