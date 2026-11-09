@@ -141,6 +141,7 @@ def parse_fw_version(pl: bytes) -> dict:
         "hw": name,
         "uuid": after[:12].hex(),
         "test_version": after[13] if len(after) > 13 else None,
+        "hw_type": after[14] if len(after) > 14 else None,  # 0: an STM32 VESC (HW_TYPE_VESC)
     }
 
 

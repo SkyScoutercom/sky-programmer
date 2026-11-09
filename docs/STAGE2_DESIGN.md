@@ -41,6 +41,17 @@ backup can be restored.
 **Content checks** before a script is tried or stored:
 - Refuse `image-save`, which would make the board boot a saved `main` instead of the stored script, plus the words the
   REPL already blocks for writing flash or reaching other boards.
+- Refuse `conf-store`, `conf-restore-mc`, `conf-restore-app` and `store-backup`: `conf-set` takes any value unchecked,
+  and storing one such as a bad switching frequency can hang the board at every boot. Stored config goes through
+  `sky set`.
+- Refuse the words that build a symbol from data at run time (`str2sym`, `u2sym`, `unflatten`, the `read` family):
+  `apply` on such a symbol calls it, which would get past every word check. The REPL also blocks `apply`. The word
+  lists are a guard against mistakes, not a sandbox: a script runs with full access to the board.
+- Refuse non-STM32 hardware (the hardware-type byte in `COMM_FW_VERSION` must be 0): the code area is only known there.
+- `try` reports success only after the board prints `Stream done, starting...`. After a stream that broke off, the
+  firmware can answer a new first chunk with the old result and run nothing (`lispif.c`, `offset_last`).
+- The firmware only erases the area when its first byte isn't blank, so old data behind a blank first byte can spoil a
+  store. The read-back catches it, and a second store works.
 - Resolve every `(import "path" 'name)` from the script's folder, as VESC Tool does, and refuse a missing file.
 - Size: at most 131,064 bytes from byte 8, as the firmware requires.
 

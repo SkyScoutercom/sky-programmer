@@ -7,7 +7,7 @@ import pytest
 from sky_programmer import code
 from sky_programmer import protocol as p
 from sky_programmer.errors import CommsError, SafetyRefusal, VerifyFailed
-from sky_programmer.safety import check_packet
+from sky_programmer.safety import check_packet, check_repl
 from sky_programmer.simulator import STORED_SCRIPT
 
 SCRIPT = '(print "hello from the new script")\n'
@@ -40,16 +40,34 @@ def test_symbols_ignore_comments_strings_and_characters():
     assert code.symbols(text) == ["print", "define", "c", "conf-store"]
 
 
-@pytest.mark.parametrize("word", ["image-save", "fw-erase", "cmds-proc", "import", "load-native-lib", "lbm-write"])
+@pytest.mark.parametrize("word", [
+    "image-save", "fw-erase", "cmds-proc", "cmds-start-stop", "import", "load-native-lib", "lbm-write", "conf-store",
+    "conf-restore-mc", "store-backup", "can-send-sid", "can-cmd", "str2sym", "u2sym", "unflatten", "read-eval-program",
+])  # fmt: skip
 def test_forbidden_words_are_refused(word):
     with pytest.raises(SafetyRefusal, match=word):
         code.check_script(f"(defun f () ({word} 1))")
 
 
+def test_a_word_built_at_run_time_is_refused():
+    with pytest.raises(SafetyRefusal, match="str2sym"):
+        code.check_script('(apply (str2sym (str-join (list "cmds" "-proc"))) (list 1))')
+
+
 def test_warning_words_are_allowed_with_a_warning():
-    warnings = code.check_script("(conf-store)")
-    assert len(warnings) == 1 and "conf-store" in warnings[0]
+    warnings = code.check_script("(eeprom-store-f 0 1.0)")
+    assert len(warnings) == 1 and "eeprom-store-f" in warnings[0]
     assert code.check_script(SCRIPT) == []
+    assert code.check_script("(eval v) (apply + (list 1 2))") == []  # evaluating a value can't make a new word
+
+
+@pytest.mark.parametrize("expr", [
+    '(apply (str2sym (str-join (list "cmds" "-proc"))) (list 1))', '(str2sym "x")', "(u2sym 300)",
+    "(unflatten buf)", "(apply print (list 1))",
+])  # fmt: skip
+def test_the_repl_refuses_words_built_at_run_time(expr):
+    with pytest.raises(SafetyRefusal):
+        check_repl(expr)
 
 
 def test_a_nul_in_the_script_is_refused():
@@ -256,10 +274,56 @@ def test_the_largest_script_fits_exactly(board):
 def test_try_streams_each_chunk_once(board):
     fake, prog = board()
     text = big_script(1000)
-    assert code.try_script(prog, text) == len(text.encode())
-    assert fake.stream_starts == 1 and bytes(fake.streamed) == text.encode()
+    res = code.try_script(prog, text)
+    assert res["bytes"] == len(text.encode()) and "pre-try" in res["config_backup"]
+    assert fake.stream_starts == 1 and bytes(fake.streamed) == text.encode() and fake.script_running
     assert fake.code_erases == 0 and fake.code_writes == []
     assert fake.stored_content() == code.pack(STORED_SCRIPT)  # nothing stored
+    assert not prog.script_paused
+
+
+def test_try_after_a_broken_off_stream_isnt_reported_as_running(board):
+    """lispif.c: an earlier stream that stopped after chunk 0 leaves offset_last at 0, so a new one-chunk stream gets
+    the stale result 0 back and nothing runs. Only the board's "Stream done" message proves the script started."""
+    fake, prog = board()
+    fake.stream_offset_last, fake.stream_result_last = 0, 0
+    with pytest.raises(VerifyFailed, match="didn't confirm"):
+        code.try_script(prog, SCRIPT)
+    assert not fake.script_running and fake.stream_starts == 1 and prog.script_paused
+
+
+def test_a_failure_mid_stream_is_not_retried(board):
+    fake, prog = board(stream_fails_at=code.STREAM_CHUNK)
+    with pytest.raises(VerifyFailed, match=f"byte {code.STREAM_CHUNK}"):
+        code.try_script(prog, big_script(1000))
+    assert fake.stream_starts == 1 and not fake.script_running
+    assert code.try_script(prog, SCRIPT)["bytes"]  # the firmware reset its state on that error
+
+
+def test_scripts_own_prints_are_kept(board):
+    fake, prog = board()
+    prog.link.prints.append("old")
+    code.try_script(prog, SCRIPT)
+    assert all(code.STREAM_DONE not in s for s in prog.link.prints)
+
+
+@pytest.mark.parametrize("action", ["store", "try"])
+def test_other_hardware_is_refused(board, action):
+    fake, prog = board(hw_type=2)  # a VESC Express, whose script area is elsewhere
+    with pytest.raises(SafetyRefusal, match="hardware type 2"):
+        code.store(prog, code.pack(SCRIPT)) if action == "store" else code.try_script(prog, SCRIPT)
+    assert fake.code_erases == 0 and fake.code_writes == [] and fake.stream_starts == 0
+
+
+def test_a_skipped_erase_fails_the_read_back_and_a_second_store_works(board):
+    """flash_helper_erase_code only tests the first byte, so old data behind a blank first byte isn't erased."""
+    fake, prog = board(script_present=False)
+    fake.code_area[1000:2000] = b"\x00" * 1000  # e.g. the tail of a large firmware update
+    content = code.pack(big_script(1500))
+    with pytest.raises(VerifyFailed, match="once more"):
+        code.store(prog, content)
+    code.store(prog, content)
+    assert fake.stored_content() == content
 
 
 def test_try_refused_while_the_motor_turns(board):
@@ -335,7 +399,7 @@ def test_cli_try_and_backup(sky, tmp_path):
     script = tmp_path / "t.lisp"
     script.write_text(SCRIPT)
     rc, out = run("code", "try", str(script), "--engine-stopped")
-    assert rc == 0 and "Nothing was stored" in out and fake.stream_starts == 1
+    assert rc == 0 and "stored script is unchanged" in out and fake.stream_starts == 1
     rc, out = run("code", "backup")
     assert rc == 0 and "Script backup saved" in out
     rc, out = run("code", "backups")

@@ -115,6 +115,9 @@ REPL_CORE_FORBIDDEN = {
     "read", "read-program", "read-eval", "read-eval-program", "eval", "eval-program", "move-to-flash", "import",
     "load-native-lib", "unload-native-lib", "fw-erase", "fw-write", "fw-reboot", "lbm-erase", "lbm-write", "lbm-run",
     "qml-erase", "qml-write",
+    # These build a word from data at run time, and `apply` calls it, so `(apply (str2sym ...))` could reach any
+    # blocked word without naming it (lispBM eval_cps.c, apply on a symbol).
+    "str2sym", "u2sym", "unflatten", "apply",
 }  # fmt: skip
 REPL_FORBIDDEN_PREFIXES = ("fw-", "bm-", "@")
 

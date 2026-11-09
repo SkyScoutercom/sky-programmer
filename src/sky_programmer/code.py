@@ -40,14 +40,34 @@ FORBIDDEN_WORDS = {
     "fw-erase": "it erases the firmware", "fw-write": "it writes the firmware", "fw-reboot": "it reboots the board",
     "lbm-erase": "it erases stored code", "lbm-write": "it writes stored code", "lbm-run": "it runs stored code",
     "qml-erase": "it erases stored code", "qml-write": "it writes stored code",
+    "cmds-start-stop": "it takes over the board's command handling",
     "import": "imports, such as native libraries, aren't supported yet. Use VESC Tool for this script for now",
     "load-native-lib": "native libraries aren't supported yet. Use VESC Tool for this script for now",
+    "unload-native-lib": "native libraries aren't supported yet. Use VESC Tool for this script for now",
+    # conf-set takes any value, unchecked, and these keep it: a bad switching frequency can hang the board at boot,
+    # before USB starts (SAFETY.md). Change stored config with `sky set`, which checks it.
+    "conf-store": "it stores config the programmer can't check; a bad value can hang the board at every boot",
+    "conf-restore-mc": "it stores config the programmer can't check", "conf-restore-app": "it stores config the "
+    "programmer can't check", "store-backup": "it stores config the programmer can't check",
+    "can-send-sid": "it can send commands to other boards on CAN, including firmware commands",
+    "can-send-eid": "it can send commands to other boards on CAN, including firmware commands",
+    "can-cmd": "it runs code on other boards on CAN",
+    # These build a word from data at run time, which would get past every check here (lispBM eval_cps.c: `apply`
+    # on a symbol calls it).
+    "str2sym": "it builds a word at run time, which gets past these checks",
+    "u2sym": "it builds a word at run time, which gets past these checks",
+    "unflatten": "it can build a word at run time, which gets past these checks",
+    "read": "it turns text into code at run time, which gets past these checks",
+    "read-program": "it turns text into code at run time, which gets past these checks",
+    "read-eval": "it turns text into code at run time, which gets past these checks",
+    "read-eval-program": "it turns text into code at run time, which gets past these checks",
 }  # fmt: skip
 # Words allowed but worth a warning.
 WARNING_WORDS = {
-    "conf-store": "it stores the motor config to flash, so the drift check can't tell its changes from yours",
     "eeprom-store-f": "it writes the board's EEPROM", "eeprom-store-i": "it writes the board's EEPROM",
 }  # fmt: skip
+HW_TYPE_VESC = 0  # the code area layout here is only known for STM32 VESC boards
+STREAM_DONE = "Stream done, starting..."  # lispif.c prints this only when the whole script arrived and starts
 
 
 # ---------------------------------------------------------------------- checking and packing a script
@@ -123,6 +143,14 @@ def import_count(content: bytes) -> int:
 def script_text(content: bytes) -> str:
     end = content.find(b"\0")
     return content[: end if end >= 0 else len(content)].decode("utf-8", errors="replace")
+
+
+def require_vesc_hardware(prog) -> None:
+    """The code area's size and place are those of an STM32 VESC; anything else could put a write somewhere else."""
+    hw_type = prog.identify().get("hw_type")
+    if hw_type != HW_TYPE_VESC:
+        raise SafetyRefusal(f"this board reports hardware type {hw_type}, not an STM32 VESC (0). Script upload only "
+                            "knows the STM32 VESC's script area, so it's refused.")  # fmt: skip
 
 
 # ---------------------------------------------------------------------- reading the stored code
@@ -215,6 +243,7 @@ def store(prog, content: bytes, reason: str = "pre-store") -> dict:
     new_image = image(content)
     if len(new_image) > CODE_AREA_BYTES:
         raise SafetyRefusal("the script doesn't fit the code area.")
+    require_vesc_hardware(prog)
     link = prog.link
     conf = prog.read_conf(MC_ROOT)
     prog.require_idle(conf)  # first: every erase and write releases the motor for 5 s
@@ -253,22 +282,45 @@ def store(prog, content: bytes, reason: str = "pre-store") -> dict:
         raise VerifyFailed(f"the script was written but couldn't be read back, so it isn't proven. Check with "
                            f"`sky code backup`. Old script: {code_backup}") from e  # fmt: skip
     if back != content:
-        raise VerifyFailed(f"the stored script doesn't read back as written. Restore with "
+        # The firmware skips the erase when the area's first byte is already blank (flash_helper.c only tests byte 0),
+        # so old data further in, such as a large firmware update's tail, can spoil the first try. That byte is
+        # written now, so the next erase runs.
+        raise VerifyFailed(f"the stored script doesn't read back as written, so the board holds no valid script. Run "
+                           f"the same command once more: the firmware can skip the first erase when old data is "
+                           f"left in the area. If it fails again, restore with "
                            f"`sky code restore {code_backup}`.")  # fmt: skip
     return {"code_backup": str(code_backup), "config_backup": str(config_backup), "bytes": len(content)}
 
 
 # ---------------------------------------------------------------------- trying from RAM
-def try_script(prog, text: str) -> int:
-    """Stream the script to RAM and run it alone. Nothing is stored; a power-up runs the stored script again.
+def _saw_stream_done(link, wait: float = 1.5) -> bool:
+    """Whether the board printed that the stream finished and the script starts. Other prints are kept."""
+    seen = link.take_prints()
+    t0 = link.clock()
+    while not any(STREAM_DONE in s for s in seen) and link.clock() - t0 < wait:
+        seen += link.collect_prints(0.05)
+    done = any(STREAM_DONE in s for s in seen)
+    link.prints.extend(s for s in seen if STREAM_DONE not in s)
+    return done
+
+
+def try_script(prog, text: str) -> dict:
+    """Stream the script to RAM and run it alone. The stored script is unchanged; a power-up runs it again.
 
     Each chunk is sent once. Above all the first: at offset 0 the firmware restarts LispBM, so a retry would too.
+    Success is only reported once the board says it started the script: after an earlier stream that broke off, the
+    firmware can answer a new first chunk with that stream's stale result and run nothing (lispif.c, offset_last).
     """
     data = text.encode("utf-8")
     if not data:
         raise SafetyRefusal("the script is empty.")
+    require_vesc_hardware(prog)
     conf = prog.read_conf(MC_ROOT)
     prog.require_idle(conf)
+    config_backup = prog.save_backup("pre-try")  # the script may change config in RAM; this records it before
+    prog.require_idle(conf)
+    prog.link.take_prints()  # the stream-done check below must see only this stream's messages
+    prog.script_paused = True  # the first chunk stops the stored script
     for offset in range(0, len(data), STREAM_CHUNK):
         chunk = data[offset:offset + STREAM_CHUNK]
         packet = (bytes([p.COMM_LISP_STREAM_CODE]) + struct.pack(">iib", offset, len(data), STREAM_MODE_RESET_AND_LOAD)
@@ -282,5 +334,8 @@ def try_script(prog, text: str) -> int:
         if result != 0:
             raise VerifyFailed(f"the board refused the script at byte {offset} (result {result}). Power-cycle the "
                                "board with the engine stopped to bring back the stored script.")  # fmt: skip
+    if not _saw_stream_done(prog.link):
+        raise VerifyFailed("the board took the script but didn't confirm it started, so it may be running nothing. "
+                           "Power-cycle the board with the engine stopped, then try again.")  # fmt: skip
     prog.script_paused = False  # the streamed script is running
-    return len(data)
+    return {"bytes": len(data), "config_backup": str(config_backup)}

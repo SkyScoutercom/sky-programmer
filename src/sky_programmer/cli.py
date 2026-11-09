@@ -229,6 +229,7 @@ def _store_and_maybe_start(prog, args, content: bytes, what: str) -> int:
     print(f"Previous script backed up: {res['code_backup']}")
     print(f"Config backed up: {res['config_backup']}")
     if args.start or _ask_yes("Start it now? It may move the motor or servo. Type YES to start: "):
+        prog.check_can_start()
         print("Script started." if prog.start() else "The board didn't start it. Check with `sky code backup`.")
     else:
         print("The new script is stored but not running. Run `sky start` or power-cycle to start it.")
@@ -257,8 +258,10 @@ def cmd_code_try(prog, args) -> int:
         print(f"Warning: {warning}")
     print(f"This runs {args.file} from RAM in place of the stored script, until the board is power-cycled.")
     _confirm(args, "It may move the motor or servo. Engine stopped, propeller clear? Type YES to run it: ")
-    size = code.try_script(prog, text)
-    print(f"Running from RAM ({size} bytes). Nothing was stored. Its messages show in `sky monitor`.")
+    res = code.try_script(prog, text)
+    print(f"Config backed up: {res['config_backup']}")
+    print(f"Running from RAM ({res['bytes']} bytes). The stored script is unchanged. Its messages, and any error in "
+          "the script, show in `sky monitor`.")  # fmt: skip
     print("Power-cycle the board, or run `sky start`, to go back to the stored script.")
     return 0
 
