@@ -136,8 +136,10 @@ The read-back checks the board's working copy in RAM. Power-cycle and read again
 Try these in order. Steps 2 and 3 come from the firmware source and have not been tried on Flipsky boards yet.
 
 1. **Power-cycle it** with the engine stopped, then run `sky status`.
-2. **Script or C library crash:** the firmware doesn't start Lisp after a watchdog reset
-   (`lispif_init`), so USB should stay usable. Fix or erase the script in VESC Tool.
+2. **Script or C library crash:** the firmware doesn't start Lisp after a **watchdog** reset (`lispif_init`), so USB
+   should stay usable after that kind of crash. Fix or erase the script in VESC Tool. A hard fault, such as a native
+   library jumping to a bad address, resets through `NVIC_SystemReset` instead (`irq_handlers.c`), so Lisp starts
+   again and the board can reboot over and over. That case needs step 3 or 4.
 3. **Config and script wipe:** connect HALL2 to SWCLK while powering up. The firmware resets the motor and app config
    and erases the stored Lisp and QML (`should_reset_config` in `main.c`). Afterwards use `sky restore` for the motor
    config; the app config and script have to go back through VESC Tool for now. Check that your board exposes these
