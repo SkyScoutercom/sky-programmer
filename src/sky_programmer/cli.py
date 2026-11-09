@@ -8,8 +8,9 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
-from . import APP_NAME, __version__, backup, config
+from . import APP_NAME, __version__, backup, code, config
 from .config import APP_ROOT, MC_ROOT
 from .errors import SafetyRefusal, SkyError
 from .link import Link, find_port, open_serial
@@ -202,6 +203,91 @@ def cmd_start(prog, args) -> int:
     return 0
 
 
+def _ask_yes(prompt: str) -> bool:
+    """A typed YES at a terminal. Never yes when nobody is there to type it."""
+    if not sys.stdin.isatty():
+        return False
+    try:
+        return input(prompt).strip() == "YES"
+    except EOFError:
+        return False
+
+
+def _read_script(path) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        raise SafetyRefusal(f"can't read {path}: {e}") from e
+
+
+def _store_and_maybe_start(prog, args, content: bytes, what: str) -> int:
+    print(f"Storing {what}: {len(content)} bytes. The board runs it at every power-up from now on.")
+    print("The running script stops, and every erase and write releases the motor for up to 5 s.")
+    _confirm(args)
+    res = code.store(prog, content)
+    print(f"Stored and read back: all {res['bytes']} bytes match.")
+    print(f"Previous script backed up: {res['code_backup']}")
+    print(f"Config backed up: {res['config_backup']}")
+    if args.start or _ask_yes("Start it now? It may move the motor or servo. Type YES to start: "):
+        print("Script started." if prog.start() else "The board didn't start it. Check with `sky code backup`.")
+    else:
+        print("The new script is stored but not running. Run `sky start` or power-cycle to start it.")
+    return 0
+
+
+def cmd_code_backup(prog, args) -> int:
+    content = code.read_code(prog)
+    path = code.save_backup(prog, content, "manual")
+    if content:
+        print(f"Script backup saved ({len(content)} bytes, {code.import_count(content)} imported files): {path}")
+    else:
+        print(f"No valid script is stored on the board. Saved an empty backup: {path}")
+    return 0
+
+
+def cmd_code_backups(prog, args) -> int:
+    paths = code.list_backups(args.backup_dir, prog.identify()["uuid"])
+    print("\n".join(str(x) for x in paths) if paths else "No script backups for this board yet.")
+    return 0
+
+
+def cmd_code_try(prog, args) -> int:
+    text = _read_script(args.file)
+    for warning in code.check_script(text):
+        print(f"Warning: {warning}")
+    print(f"This runs {args.file} from RAM in place of the stored script, until the board is power-cycled.")
+    _confirm(args, "It may move the motor or servo. Engine stopped, propeller clear? Type YES to run it: ")
+    size = code.try_script(prog, text)
+    print(f"Running from RAM ({size} bytes). Nothing was stored. Its messages show in `sky monitor`.")
+    print("Power-cycle the board, or run `sky start`, to go back to the stored script.")
+    return 0
+
+
+def cmd_code_store(prog, args) -> int:
+    text = _read_script(args.file)
+    for warning in code.check_script(text):
+        print(f"Warning: {warning}")
+    return _store_and_maybe_start(prog, args, code.pack(text), args.file)
+
+
+def cmd_code_restore(prog, args) -> int:
+    doc = code.load_backup(args.file)
+    ident = prog.identify()
+    if (doc["uuid"], doc["hw"], doc["fw"]) != (ident["uuid"], ident["hw"], ident["fw"]):
+        raise SafetyRefusal(f"this backup is from {doc['hw']} firmware {doc['fw']}, UUID {doc['uuid']}; the board is "
+                            f"{ident['hw']} firmware {ident['fw']}, UUID {ident['uuid']}.")  # fmt: skip
+    if doc["empty"] or not doc["content"]:
+        raise SafetyRefusal("this backup holds no script, so there is nothing to restore.")
+    imports = code.import_count(doc["content"])
+    if imports:
+        print(f"This backup includes {imports} imported files, such as a native library. If a native library crashes "
+              "at start-up, the board can reboot over and over, and only the HALL2-SWCLK jumper or an SWD programmer "
+              "recovers it (see SAFETY.md).")  # fmt: skip
+        if not args.native_ok and not _ask_yes("Type YES to restore it anyway: "):
+            raise SafetyRefusal("cancelled. Nothing was written.")
+    return _store_and_maybe_start(prog, args, doc["content"], f"the backup from {doc['created']}")
+
+
 def cmd_term(prog, args) -> int:
     for text in prog.terminal(args.term_command):
         print(text)
@@ -283,6 +369,29 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--engine-stopped", action="store_true", help="state the engine is stopped; skips the prompt")
     sp = add("term", cmd_term, "run a read-only firmware terminal command, e.g. sky term faults")
     sp.add_argument("term_command", metavar="command")
+    sp = add("code", None, "back up, try and store the board's Lisp script")
+    code_sub = sp.add_subparsers(dest="code_command", required=True)
+
+    def add_code(name, func, help_text):
+        csp = code_sub.add_parser(name, help=help_text, description=help_text)
+        csp.set_defaults(func=func)
+        return csp
+
+    add_code("backup", cmd_code_backup, "save the stored script to a file")
+    add_code("backups", cmd_code_backups, "list this board's script backups")
+    csp = add_code("try", cmd_code_try, "run a script from RAM without storing it, until the next power-up")
+    csp.add_argument("file")
+    csp.add_argument("--engine-stopped", action="store_true", help="state the engine is stopped; skips the prompt")
+    store_commands = (("store", cmd_code_store, "store a script on the board, after backing up the old one"),
+                      ("restore", cmd_code_restore, "store one of this board's script backups again"))
+    for name, func, help_text in store_commands:
+        csp = add_code(name, func, help_text)
+        csp.add_argument("file")
+        csp.add_argument("--engine-stopped", action="store_true", help="state the engine is stopped; skips the prompt")
+        csp.add_argument("--start", action="store_true", help="start the stored script afterwards without asking")
+        if name == "restore":
+            csp.add_argument("--native-ok", action="store_true",
+                             help="restore a backup that includes native libraries without asking")  # fmt: skip
     sp = add("repl", cmd_repl, "LispBM console")
     sp.add_argument("-e", "--expr", help="evaluate one expression and exit")
     sp.add_argument("--allow-motor", action="store_true", help="allow words that move the motor or change limits")

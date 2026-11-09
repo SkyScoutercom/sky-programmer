@@ -1,6 +1,7 @@
 # Stage 2 design: uploading scripts and native libraries
 
-Status: design, not built. The firmware facts behind each rule are in [LISP_UPLOAD_SPEC.md](LISP_UPLOAD_SPEC.md), with
+Status: step 1 (Lisp-only scripts) built and tested against the simulated board in `src/sky_programmer/code.py`;
+not yet bench-tested. The rest is design. The firmware facts behind each rule are in [LISP_UPLOAD_SPEC.md](LISP_UPLOAD_SPEC.md), with
 file and line citations into firmware 7.00 and VESC Tool.
 
 ## Commands
@@ -17,7 +18,7 @@ The desktop app gets a Scripts page doing the same through the same engine.
 ## Rules
 
 **Packets** (enforced in `check_packet`, which sees every packet):
-- `COMM_LISP_WRITE_CODE` only through the upload path. Payload of at least 5 bytes, and
+- `COMM_LISP_WRITE_CODE` only through the upload path. Payload of at least 6 bytes (ID, 4-byte offset, data), and
   `0 ≤ offset` and `offset + length ≤ 8 + N ≤ 131,072`. The firmware checks neither, and a bad offset reaches the
   bootloader sector.
 - `COMM_LISP_READ_CODE`: length 1 to 400, offset 0 or more. The firmware's check is signed.

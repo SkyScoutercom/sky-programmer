@@ -135,9 +135,11 @@ class Link:
     def close(self) -> None:
         self.ser.close()
 
-    def send(self, payload: bytes, *, config_write: bool = False, repl_allow_motor: bool = False) -> None:
+    def send(self, payload: bytes, *, config_write: bool = False, repl_allow_motor: bool = False,
+             code_write: bool = False, code_stream: bool = False) -> None:
         """Send one packet, after check_packet() has allowed it."""
-        check_packet(payload, config_write=config_write, repl_allow_motor=repl_allow_motor)
+        check_packet(payload, config_write=config_write, repl_allow_motor=repl_allow_motor, code_write=code_write,
+                     code_stream=code_stream)
         try:
             self.ser.write(p.frame(payload))
         except OSError as e:
@@ -172,10 +174,11 @@ class Link:
         while self._pump():
             pass
 
-    def request(self, payload: bytes, *, timeout: float = 3.0, config_write: bool = False) -> bytes:
+    def request(self, payload: bytes, *, timeout: float = 3.0, config_write: bool = False, code_write: bool = False,
+                code_stream: bool = False) -> bytes:
         """Send one packet and return the first reply with the same command id."""
         self.drain()
-        self.send(payload, config_write=config_write)
+        self.send(payload, config_write=config_write, code_write=code_write, code_stream=code_stream)
         t0 = self.clock()
         while self.clock() - t0 < timeout:
             for pl in self._pump():

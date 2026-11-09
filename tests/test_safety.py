@@ -28,7 +28,7 @@ def test_every_flash_command_is_refused_even_with_write_permission(name, cmd):
 
 
 def test_allow_list_is_exactly_what_was_reviewed():
-    assert set(s.ALLOWED) == {0, 4, 13, 14, 15, 17, 20, 133, 138, 159}
+    assert set(s.ALLOWED) == {0, 4, 13, 14, 15, 17, 20, 130, 131, 132, 133, 138, 139, 159}
 
 
 def test_every_other_command_number_is_refused():

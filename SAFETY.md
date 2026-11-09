@@ -53,7 +53,7 @@ It can't promise everything:
 | Pausing or restarting the script with the engine running | The script owns throttle and kill | `sky stop` and `sky start` refuse if the motor is turning |
 
 Blocking uses an allow-list: `check_packet()` in `safety.py` sees every packet, and any command not reviewed
-and listed is refused. Only 10 of the 157 commands are allowed.
+and listed is refused. Only 14 of the 157 commands are allowed. The four Lisp code commands carry bounds checks the firmware lacks: see [docs/STAGE2_DESIGN.md](docs/STAGE2_DESIGN.md).
 
 ## The desktop app
 
