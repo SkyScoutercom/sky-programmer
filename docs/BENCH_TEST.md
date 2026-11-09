@@ -97,7 +97,7 @@ native library), so put it back with VESC Tool afterwards.
 | 41 | `sky start`, type YES | The servo test runs |
 | 42 | Power-cycle, reconnect | The servo test runs by itself at power-up |
 | 43 | Optional: open VESC Tool, Lisp page, read the code from the board | The same text as `servo_74_test.lisp` |
-| 44 | Run step 40's command again, and pull the USB cable while it writes | An error naming `sky code restore`. Reconnect: `sky code backup` says no valid script is stored |
+| 44 | Run step 40's command again, and pull the USB cable while it writes | An error naming the old script's backup. Reconnect: `sky code backup` says no valid script is stored (if the store finished before the pull, say so and try again) |
 | 45 | Power-cycle, reconnect | The board connects normally, and no script runs |
 | 46 | `sky code restore <path from step 36>`, type YES, answer YES to start | The original script is back and running |
 
