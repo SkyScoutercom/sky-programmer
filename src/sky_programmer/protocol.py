@@ -15,9 +15,13 @@ COMM_GET_MCCONF_DEFAULT = 15
 COMM_GET_APPCONF = 17
 COMM_TERMINAL_CMD = 20
 COMM_PRINT = 21
+COMM_LISP_READ_CODE = 130
+COMM_LISP_WRITE_CODE = 131
+COMM_LISP_ERASE_CODE = 132
 COMM_LISP_SET_RUNNING = 133
 COMM_LISP_PRINT = 135
 COMM_LISP_REPL_CMD = 138
+COMM_LISP_STREAM_CODE = 139
 COMM_MOTOR_ESTOP = 159
 
 PRINT_COMMANDS = (COMM_PRINT, COMM_LISP_PRINT)
@@ -137,6 +141,7 @@ def parse_fw_version(pl: bytes) -> dict:
         "hw": name,
         "uuid": after[:12].hex(),
         "test_version": after[13] if len(after) > 13 else None,
+        "hw_type": after[14] if len(after) > 14 else None,  # 0: an STM32 VESC (HW_TYPE_VESC)
     }
 
 

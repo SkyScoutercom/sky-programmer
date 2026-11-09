@@ -90,6 +90,21 @@ To check an install, run `"SKY programmer.exe" --self-test report.txt`. It uses 
 | `sky stop` / `sky start` | Pause the script and release the motor / run the stored script |
 | `sky term <command>` | Read-only firmware terminal commands, e.g. `sky term faults` |
 | `sky repl [-e expr]` | LispBM console; words that write flash, reach other boards or move the motor are blocked |
+| `sky code backup` / `sky code backups` | Save the board's stored Lisp script to a file / list saved scripts |
+| `sky code try <file.lisp>` | Run a script from RAM without storing it; a power-cycle brings back the stored one |
+| `sky code store <file.lisp> [--start]` | Store a script: backs up the old script and the config, erases, writes, reads every byte back |
+| `sky code restore <backup> [--start]` | Store one of this board's script backups again |
+
+### Uploading a Lisp script
+
+Try it first with `sky code try`, then store it with `sky code store`. Storing asks for the same engine-stopped `YES`
+as a config write. Every erase and write releases the motor for up to 5 s, and the board runs the stored script at
+every power-up. A store that fails part-way leaves the board with no script: it still boots, and the command prints the
+`sky code restore` line that puts the old one back.
+
+Scripts that `import` files, such as native libraries, are refused for now: a native library that crashes can make the
+board reboot over and over (see [SAFETY.md](SAFETY.md)). Use VESC Tool for those until support is added. The design
+and the firmware facts behind it are in [docs/STAGE2_DESIGN.md](docs/STAGE2_DESIGN.md).
 
 ### Changing from BLDC to FOC
 
@@ -128,7 +143,8 @@ hang a board at boot are refused with no override.
 ## Roadmap
 
 1. **Done, pending bench test:** status, monitor, get/set, backup/restore, REPL, in the terminal and the desktop app.
-2. **C workflow:** build and upload C native libraries, running from RAM first.
+2. **Script upload:** Lisp scripts done in the terminal, pending bench test. Next: native libraries, which firmware
+   7.00 can't run from RAM first, then building C libraries, then a Scripts page in the desktop app.
 3. **Independent of VESC Tool:** own uploader and motor detection.
 4. **Firmware flashing:** last, and only with the checks listed in SAFETY.md.
 

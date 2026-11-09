@@ -42,3 +42,33 @@ stopped with the propeller clear throughout. Section B and most of C were run wi
 - **Channel 7 calibration has drifted.** TAKEOFF read about 2300 µs against the calibrated 2012 µs. It still decodes
   correctly.
 - **Throttle servo:** 74° (a 1473 µs pulse) is the carburettor's full-throttle stop.
+
+## 2026-11-09: section G, Lisp script upload (`stage-2-code-upload`)
+
+Same board, firmware 7.00 at commit `20cbb362` (`release_7_00`). That commit is 4 behind `e877eae`, which the upload
+code was checked against. Those 4 commits only touch an encoder driver, the Trampa 60_100 board files and the
+packaging script, so the facts hold. The board started with `engine_control.lisp` plus its `hall-capture` native
+library (40,145 bytes), stored by VESC Tool. Run with `sky` from the branch, engine stopped, propeller off.
+
+| Step | Result |
+|---|---|
+| 35 `fw_info` | `20cbb362`, see above |
+| 36 Backup | **Pass.** 40,145 bytes, 1 import: byte for byte `engine_control.lisp` (less its final newline) and `hall_capture.bin` plus a NUL |
+| 37 Try | **Pass.** The board confirmed the stream, and the servo test ran |
+| 38 Monitor | **Pass.** The script's messages showed; the ramp to 74° followed channel 7 |
+| 39 Power-cycle | **Pass.** The stored engine script ran again (see the channel 7 note below) |
+| 40–41 Store, start | **Pass.** 6,443 bytes stored and read back; started on request |
+| 42 Power-cycle | **Pass.** The servo test ran by itself at power-up |
+| 43 VESC Tool reads it | **Pass.** VESC Tool read the servo test from the board |
+| 44 Cable pulled mid-store | **Pass**, twice. Pulled about 1 s after YES: before the erase, so nothing changed (`sky code backup` still found the servo test). Pulled about 3 s after YES: during the erase. The error named the old script's backup, and the board held no valid script |
+| 45 Power-cycle with no script | **Pass.** It connected normally, with no fault and no script running |
+| 46 Restore with a native library | **Pass.** All 40,145 bytes written and read back; it started, and the library reported hall rpm |
+
+### What the bench found
+
+| Found | Result |
+|---|---|
+| The engine script cranks the starter at power-up when channel 7 is at IDLE | It did so in steps 39 and 46: up to 36,000 erpm, and about 66 A against the engine. Section G now says to keep channel 7 at OFF before every power-cycle, start and restore. The motor noise dropped USB once (kernel `error -71`); the board itself didn't reset |
+| A cable pulled before the erase reported only "USB read failed" | Nothing had been written, but the message didn't say so. It now says the stored script is unchanged |
+| The erase takes a few seconds | A pull 3 s after YES still landed during the erase. It finished on the board, inside the 12 s the tool waits |
+| `sky status` read -13 A at 0 erpm right after a power-up | One sample, then 0.05 to 0.08 A: the same start-up reading as in the 2026-11-07 run |

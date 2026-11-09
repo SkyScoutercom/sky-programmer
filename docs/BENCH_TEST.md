@@ -80,6 +80,32 @@ Windows has its own USB and serial behaviour, so a pass on Linux doesn't carry o
 | 33 | Power-cycle after a write, reconnect | The value is still there, as in step 13 |
 | 34 | Pull the USB cable during live values | Clear message, back to the welcome screen, no hang |
 
+## G. Uploading a Lisp script (stage 2)
+
+Engine stopped, propeller off, and the throttle servo free to move: `servo_74_test.lisp` moves it. Use the Linux
+terminal (`sky`), from `~/Desktop/Drone_ECU/vesc-starter`. The engine script can't be uploaded this way yet (it loads a
+native library), so put it back with VESC Tool afterwards.
+
+**Keep RC channel 7 at OFF before every power-cycle, `sky start` and restore.** At power-up the engine control script
+runs its start sequence when channel 7 is at IDLE or TAKEOFF, and spins the starter even with no engine attached. On
+the first bench run it reached 36,000 erpm and the motor noise dropped USB (kernel `error -71`). Move channel 7 to
+TAKEOFF only on purpose, while the servo test is running.
+
+| # | Action | Expect |
+|---|---|---|
+| 35 | `sky term fw_info` | Its Git hash. Send it back: the firmware facts were checked against `e877eae` |
+| 36 | `sky code backup` | "Script backup saved (N bytes, 0 imported files)". Keep the path: it's the script on the board now |
+| 37 | `sky code try servo_74_test.lisp`, type YES | A config backup line, then "Running from RAM". The servo does what the script does |
+| 38 | `sky monitor --seconds 10` | The script's own messages, if it prints any |
+| 39 | Power-cycle, reconnect | The script from step 36 runs again: `try` stored nothing |
+| 40 | `sky code store servo_74_test.lisp`, type YES, then answer no to starting it. Time it | "Stored and read back: all ... bytes match", then "not running". Send back how long it took |
+| 41 | `sky start`, type YES | The servo test runs |
+| 42 | Power-cycle, reconnect | The servo test runs by itself at power-up |
+| 43 | Optional: open VESC Tool, Lisp page, read the code from the board | The same text as `servo_74_test.lisp` |
+| 44 | Run step 40's command again, and pull the USB cable while it writes | An error naming the old script's backup. Reconnect: `sky code backup` says no valid script is stored (if the store finished before the pull, say so and try again) |
+| 45 | Power-cycle, reconnect | The board connects normally, and no script runs |
+| 46 | `sky code restore <path from step 36>`, type YES, answer YES to start | The original script is back and running |
+
 Please send back any step that didn't match, with its output. Steps 6, 7, 11, 13, 15 and 17 test assumptions the
 simulated board can't confirm.
 

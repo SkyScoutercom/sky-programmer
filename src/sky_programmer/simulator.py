@@ -20,11 +20,12 @@ from __future__ import annotations
 import math
 import struct
 
-from . import config, safety
+from . import code, config, safety
 from . import protocol as p
 from .config import APP_ROOT, MC_ROOT
 
 UUID = bytes(range(1, 13))
+STORED_SCRIPT = '(print "stored script running")'
 LAYOUT = config.load_layout(7, 0)
 
 BOARD_VALUES = {
@@ -108,6 +109,22 @@ class FakeVesc:
         self.change_mc_on_read = knobs.pop("change_mc_on_read", False)
         self.dead = False
         self.released = False
+        # The Lisp code area, sector 10. It starts with a small valid script when one is "present".
+        self.code_area = bytearray(b"\xff" * code.CODE_AREA_BYTES)
+        if self.script_present:
+            stored = code.image(code.pack(STORED_SCRIPT))
+            self.code_area[:len(stored)] = stored
+        self.code_touched = False  # erased or written since start: then the code area decides whether a script runs
+        self.code_writes, self.code_erases, self.stream_starts = [], 0, 0
+        self.streamed = bytearray()
+        self.code_erase_fails = knobs.pop("code_erase_fails", False)
+        self.code_write_fails_at = knobs.pop("code_write_fails_at", None)  # offset whose write reports failure
+        self.code_write_silent_at = knobs.pop("code_write_silent_at", None)  # offset whose write gets no reply
+        self.code_read_corrupt = knobs.pop("code_read_corrupt", False)  # read-back returns one wrong byte
+        self.stream_fails_at = knobs.pop("stream_fails_at", None)  # offset whose stream chunk is refused
+        self.hw_type = knobs.pop("hw_type", 0)  # HW_TYPE_VESC
+        # lispif.c's static stream state: a repeated offset gets the last result again, without being processed.
+        self.stream_offset_last, self.stream_result_last, self.stream_tok_valid = -1, -1, False
         assert not knobs, knobs
 
     # ---------------------------------------------------------- serial interface
@@ -150,7 +167,7 @@ class FakeVesc:
         if self.dead:
             return
         if cmd == p.COMM_FW_VERSION:
-            body = bytes([cmd, *self.fw]) + self.hw.encode() + b"\0" + self.uuid + bytes([0, 0])
+            body = bytes([cmd, *self.fw]) + self.hw.encode() + b"\0" + self.uuid + bytes([0, 0, self.hw_type])
             self._reply(body)
         elif cmd == p.COMM_GET_VALUES:
             self._reply(self._values())
@@ -184,8 +201,100 @@ class FakeVesc:
             self._print(p.COMM_LISP_PRINT, "> " + text)
         elif cmd == p.COMM_MOTOR_ESTOP:
             self.released = True
+        elif cmd == p.COMM_LISP_READ_CODE:
+            self._read_code(pl)
+        elif cmd == p.COMM_LISP_ERASE_CODE:
+            self._erase_code()
+        elif cmd == p.COMM_LISP_WRITE_CODE:
+            self._write_code(pl)
+        elif cmd == p.COMM_LISP_STREAM_CODE:
+            self._stream_code(pl)
+
+    # ---------------------------------------------------------- the Lisp code area (docs/LISP_UPLOAD_SPEC.md)
+    def stored_content(self):
+        """What the firmware would run: the content if the length and CRC check out (qmlui_check), else None."""
+        area = bytes(self.code_area)
+        if getattr(self, "_checked", (None,))[0] != area:  # the pure-Python CRC is slow; tests may edit the area
+            n, crc = struct.unpack_from(">IH", area, 0)
+            ok = n <= code.MAX_CONTENT_BYTES and p.crc16(area[6:8 + n]) == crc
+            self._checked = (area, area[8:8 + n] if ok else None)
+        return self._checked[1]
+
+    def _read_code(self, pl):
+        length, offset = struct.unpack_from(">ii", pl, 1)
+        content = self.stored_content()
+        if content is None:
+            self._reply(bytes([p.COMM_LISP_READ_CODE]) + struct.pack(">ii", 0, 0))
+            return
+        if length + offset > len(content) or length > 502:
+            return  # the firmware doesn't answer
+        data = bytearray(content[offset:offset + length])
+        if self.code_read_corrupt and data:
+            data[0] ^= 0x01
+        self._reply(bytes([p.COMM_LISP_READ_CODE]) + struct.pack(">ii", len(content), offset) + bytes(data))
+
+    def _erase_code(self):
+        self.code_erases += 1
+        self.code_touched = True
+        self.script_running = False  # lispif_stop runs first, even if the erase fails
+        if self.erpm:
+            self.violations.append("code erase while the motor was turning")
+            self._reply(bytes([p.COMM_LISP_ERASE_CODE, 0]))  # the motor didn't release in time
+            return
+        if not self.code_erase_fails and self.code_area[0] != 0xFF:  # flash_helper_erase_code only tests byte 0
+            self.code_area[:] = b"\xff" * code.CODE_AREA_BYTES
+        self._reply(bytes([p.COMM_LISP_ERASE_CODE, 0 if self.code_erase_fails else 1]))
+
+    def _write_code(self, pl):
+        offset = struct.unpack_from(">I", pl, 1)[0]
+        data = pl[5:]
+        self.code_writes.append(offset)
+        self.code_touched = True
+        if not data or offset + len(data) > code.CODE_AREA_BYTES:
+            self.violations.append(f"code write outside the code area: offset {offset}, {len(data)} bytes")
+            return
+        if offset == self.code_write_silent_at:
+            return
+        ok = offset != self.code_write_fails_at
+        if ok:
+            for i, byte in enumerate(data):  # flash programming can only clear bits
+                self.code_area[offset + i] &= byte
+        self._reply(bytes([p.COMM_LISP_WRITE_CODE, 1 if ok else 0]) + struct.pack(">I", offset))
+
+    def _stream_code(self, pl):
+        offset, total, mode = struct.unpack_from(">iib", pl, 1)
+        if mode != code.STREAM_MODE_RESET_AND_LOAD:
+            self.violations.append(f"stream mode {mode}")
+        reply = bytes([p.COMM_LISP_STREAM_CODE]) + struct.pack(">i", offset)
+        if offset == 0:  # lispif.c restarts LispBM without the stored code, before the repeat check below
+            self.stream_starts += 1
+            self.streamed = bytearray()
+            self.script_running = False
+            self.stream_tok_valid = False
+        if offset == self.stream_offset_last:
+            self._reply(reply + struct.pack(">h", self.stream_result_last) + b"\0\0")  # replies `ind` bytes
+            return
+        self.stream_offset_last = offset
+        if offset == 0:
+            self.stream_tok_valid = True
+        if not self.stream_tok_valid:
+            self.stream_result_last = -15  # "Tokenizer Invalid"; offset_last is kept
+            self._print(p.COMM_LISP_PRINT, "Tokenizer Invalid")
+        elif offset == self.stream_fails_at:
+            self.stream_result_last, self.stream_offset_last = -5, -1
+            self._print(p.COMM_LISP_PRINT, "Stream timed out")
+        else:
+            self.streamed += pl[10:]
+            if offset + len(pl) - 10 == total:
+                self.stream_tok_valid, self.stream_offset_last = False, -1
+                self.script_running = True
+                self._print(p.COMM_LISP_PRINT, code.STREAM_DONE)
+            self.stream_result_last = 0
+        self._reply(reply + struct.pack(">h", self.stream_result_last))
 
     def _set_running(self, run):
+        if run and self.code_touched:  # a restart runs the stored code only if it checks out
+            self.script_present = self.stored_content() is not None
         if run:
             self.script_running = self.script_present
             if not self.lose_running_reply:
@@ -208,6 +317,8 @@ class FakeVesc:
         bad_f_sw = not (1000 <= values["m_bldc_f_sw_min"] and values["m_bldc_f_sw_max"] <= 200000)
         if values["motor_type"] == 0 and bad_f_sw:
             self.boot_hung = self.dead = True
+        if self.code_touched:  # at boot the firmware runs the stored code only if it checks out
+            self.script_present = self.stored_content() is not None
         self.script_running = self.script_present
 
     def _write_config(self, blob):

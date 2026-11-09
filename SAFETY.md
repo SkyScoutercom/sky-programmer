@@ -53,7 +53,7 @@ It can't promise everything:
 | Pausing or restarting the script with the engine running | The script owns throttle and kill | `sky stop` and `sky start` refuse if the motor is turning |
 
 Blocking uses an allow-list: `check_packet()` in `safety.py` sees every packet, and any command not reviewed
-and listed is refused. Only 10 of the 157 commands are allowed.
+and listed is refused. Only 14 of the 157 commands are allowed. The four Lisp code commands carry bounds checks the firmware lacks: see [docs/STAGE2_DESIGN.md](docs/STAGE2_DESIGN.md).
 
 ## The desktop app
 
@@ -136,8 +136,10 @@ The read-back checks the board's working copy in RAM. Power-cycle and read again
 Try these in order. Steps 2 and 3 come from the firmware source and have not been tried on Flipsky boards yet.
 
 1. **Power-cycle it** with the engine stopped, then run `sky status`.
-2. **Script or C library crash:** the firmware doesn't start Lisp after a watchdog reset
-   (`lispif_init`), so USB should stay usable. Fix or erase the script in VESC Tool.
+2. **Script or C library crash:** the firmware doesn't start Lisp after a **watchdog** reset (`lispif_init`), so USB
+   should stay usable after that kind of crash. Fix or erase the script in VESC Tool. A hard fault, such as a native
+   library jumping to a bad address, resets through `NVIC_SystemReset` instead (`irq_handlers.c`), so Lisp starts
+   again and the board can reboot over and over. That case needs step 3 or 4.
 3. **Config and script wipe:** connect HALL2 to SWCLK while powering up. The firmware resets the motor and app config
    and erases the stored Lisp and QML (`should_reset_config` in `main.c`). Afterwards use `sky restore` for the motor
    config; the app config and script have to go back through VESC Tool for now. Check that your board exposes these

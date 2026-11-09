@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import struct
 from functools import lru_cache
 from importlib import resources
 
@@ -31,7 +32,16 @@ _CONDITIONAL = {
     p.COMM_TERMINAL_CMD: "TERMINAL_CMD (read-only commands only)",
     p.COMM_LISP_SET_RUNNING: "LISP_SET_RUNNING",
     p.COMM_LISP_REPL_CMD: "LISP_REPL_CMD (filtered)",
+    p.COMM_LISP_READ_CODE: "LISP_READ_CODE (length 1-400, offset 0 or more)",
+    p.COMM_LISP_WRITE_CODE: "LISP_WRITE_CODE (only through the script upload path, inside the code area)",
+    p.COMM_LISP_ERASE_CODE: "LISP_ERASE_CODE (only through the script upload path)",
+    p.COMM_LISP_STREAM_CODE: "LISP_STREAM_CODE (only through `sky code try`, mode 1)",
 }
+
+# The Lisp code area is one 128 kB flash sector. The firmware writes to its base + offset with no bounds check
+# (flash_helper.c), and the next sector is the bootloader, so every write is checked here instead.
+CODE_AREA_BYTES = 128 * 1024
+CODE_READ_MAX = 400
 
 ALLOWED = {**_READ_ONLY, **_CONDITIONAL}
 
@@ -105,6 +115,9 @@ REPL_CORE_FORBIDDEN = {
     "read", "read-program", "read-eval", "read-eval-program", "eval", "eval-program", "move-to-flash", "import",
     "load-native-lib", "unload-native-lib", "fw-erase", "fw-write", "fw-reboot", "lbm-erase", "lbm-write", "lbm-run",
     "qml-erase", "qml-write",
+    # These build a word from data at run time, and `apply` calls it, so `(apply (str2sym ...))` could reach any
+    # blocked word without naming it (lispBM eval_cps.c, apply on a symbol).
+    "str2sym", "u2sym", "unflatten", "apply",
 }  # fmt: skip
 REPL_FORBIDDEN_PREFIXES = ("fw-", "bm-", "@")
 
@@ -166,7 +179,41 @@ def check_terminal(text: str) -> None:
                             f"Allowed: {', '.join(sorted(TERMINAL_READ_ONLY))}")
 
 
-def check_packet(payload: bytes, *, config_write: bool = False, repl_allow_motor: bool = False) -> None:
+def check_code_packet(payload: bytes, *, code_write: bool, code_stream: bool) -> None:
+    """The Lisp code commands, whose bounds the firmware doesn't check (docs/LISP_UPLOAD_SPEC.md, 1.2 to 1.6)."""
+    cmd = payload[0]
+    if cmd == p.COMM_LISP_READ_CODE:
+        if len(payload) != 9:
+            raise SafetyRefusal("LISP_READ_CODE takes a length and an offset.")
+        length, offset = struct.unpack_from(">ii", payload, 1)
+        if not 1 <= length <= CODE_READ_MAX or offset < 0 or offset + length > CODE_AREA_BYTES:
+            raise SafetyRefusal(f"LISP_READ_CODE length {length} at offset {offset} is outside the code area.")
+    elif cmd == p.COMM_LISP_ERASE_CODE:
+        if not code_write:
+            raise SafetyRefusal("erasing the script area must go through the script upload path.")
+        if len(payload) != 5:
+            raise SafetyRefusal("LISP_ERASE_CODE takes exactly one 4-byte size.")
+    elif cmd == p.COMM_LISP_WRITE_CODE:
+        if not code_write:
+            raise SafetyRefusal("writing the script area must go through the script upload path.")
+        if len(payload) < 6:  # the firmware turns 1-3 bytes of data into a 4 GB write across the bootloader
+            raise SafetyRefusal("LISP_WRITE_CODE must carry an offset and at least one byte.")
+        offset = struct.unpack_from(">I", payload, 1)[0]
+        if offset + len(payload) - 5 > CODE_AREA_BYTES:
+            raise SafetyRefusal(f"LISP_WRITE_CODE at offset {offset} would write past the code area, into the "
+                                "bootloader. Refused.")  # fmt: skip
+    elif cmd == p.COMM_LISP_STREAM_CODE:
+        if not code_stream:
+            raise SafetyRefusal("streaming a script must go through `sky code try`.")
+        if len(payload) < 11:
+            raise SafetyRefusal("LISP_STREAM_CODE must carry an offset, a length, a mode and some code.")
+        offset, total, mode = struct.unpack_from(">iib", payload, 1)
+        if mode != 1 or offset < 0 or offset + len(payload) - 10 > total:
+            raise SafetyRefusal("LISP_STREAM_CODE must use mode 1 and stay inside the declared length.")
+
+
+def check_packet(payload: bytes, *, config_write: bool = False, repl_allow_motor: bool = False,
+                 code_write: bool = False, code_stream: bool = False) -> None:
     """Raise SafetyRefusal unless this exact packet is allowed to leave the app."""
     if not payload:
         raise SafetyRefusal("empty packet")
@@ -192,6 +239,8 @@ def check_packet(payload: bytes, *, config_write: bool = False, repl_allow_motor
         check_terminal(_text(payload))
     elif cmd == p.COMM_LISP_REPL_CMD:
         check_repl(_text(payload), allow_motor=repl_allow_motor)
+    elif cmd in (p.COMM_LISP_READ_CODE, p.COMM_LISP_WRITE_CODE, p.COMM_LISP_ERASE_CODE, p.COMM_LISP_STREAM_CODE):
+        check_code_packet(payload, code_write=code_write, code_stream=code_stream)
 
 
 def _text(payload: bytes) -> str:
