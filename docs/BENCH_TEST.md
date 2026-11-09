@@ -86,6 +86,11 @@ Engine stopped, propeller off, and the throttle servo free to move: `servo_74_te
 terminal (`sky`), from `~/Desktop/Drone_ECU/vesc-starter`. The engine script can't be uploaded this way yet (it loads a
 native library), so put it back with VESC Tool afterwards.
 
+**Keep RC channel 7 at OFF before every power-cycle, `sky start` and restore.** At power-up the engine control script
+runs its start sequence when channel 7 is at IDLE or TAKEOFF, and spins the starter even with no engine attached. On
+the first bench run it reached 36,000 erpm and the motor noise dropped USB (kernel `error -71`). Move channel 7 to
+TAKEOFF only on purpose, while the servo test is running.
+
 | # | Action | Expect |
 |---|---|---|
 | 35 | `sky term fw_info` | Its Git hash. Send it back: the firmware facts were checked against `e877eae` |
