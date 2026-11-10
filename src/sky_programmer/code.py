@@ -511,16 +511,19 @@ RESCUE_SETTLE_S = 2.0
 
 
 def rescue(open_link, find_ports, backup_dir, *, uuid: str | None = None, wait_s: float = RESCUE_WAIT_S,
-           clock=time.monotonic, sleep=time.sleep, say=print) -> dict:  # fmt: skip
+           clock=time.monotonic, sleep=time.sleep, say=print, should_stop=lambda: False) -> dict:  # fmt: skip
     """Wait for the board to appear, then erase its stored script, so its next boot runs none.
 
     For a board boot-looping on a native library: the erase stops the script first (commands.c, lispif_stop), and the
     start-up guard keeps the library from loading for GUARD_SECONDS. A board that resets midway is waited for again.
+    should_stop: checked while waiting, so the desktop app can cancel before anything is erased.
     """
     from .programmer import Programmer  # here, so importing this module stays light
 
     deadline, last_problem = clock() + wait_s, "the board never appeared"
     while clock() < deadline:
+        if should_stop():
+            raise SafetyRefusal("the rescue was cancelled. Nothing was erased.")
         ports = find_ports()
         if len(ports) > 1:
             raise SafetyRefusal(f"more than one possible board ({', '.join(ports)}). Pick one with --port.")

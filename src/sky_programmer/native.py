@@ -333,6 +333,36 @@ def _tool(toolchain: Path, name: str, *args) -> str:
     return out.stdout
 
 
+def report_lines(builds) -> list[str]:
+    """What each import's build gave, worded the same in the terminal and the desktop app."""
+    lines = []
+    for path, name, result in builds:
+        if result is None:
+            lines.append(f"{name}: {path} has no source and Makefile next to it, so there's nothing to build.")
+            continue
+        commit = result.commit[:8] if result.commit else "an unknown commit"
+        lines.append(f"{name}: built from source, {len(result.data)} bytes, SHA-256 {result.sha256}, gcc "
+                     f"{result.version}, interface files at {commit}.")  # fmt: skip
+        if result.matches_committed is False:
+            lines.append(f"  The committed {path} differs from this build of its source.")
+        elif result.matches_committed:
+            lines.append(f"  The committed {path} matches this build byte for byte.")
+        lines += [f"  Warning: {warning}" for warning in result.warnings]
+    return lines
+
+
+def fresh_builds_for_board(prog, builds) -> dict:
+    """{import path: built bytes}, once every import was built and all match the board's firmware commit."""
+    prebuilt = [path for path, _, result in builds if result is None]
+    if prebuilt:
+        raise SafetyRefusal(f"building from source was asked for, but {', '.join(prebuilt)} has no source to build "
+                            "from. Store without building to use the file as it is.")  # fmt: skip
+    firmware = board_commit(prog)
+    for _, _, result in builds:
+        require_matching_interface(result.commit, firmware)
+    return {path: result.data for path, _, result in builds}
+
+
 def build_imports(text: str, folder) -> list[tuple[str, str, Build | None]]:
     """(import path, name, build or None if prebuilt) for each import of a script."""
     from .code import find_imports

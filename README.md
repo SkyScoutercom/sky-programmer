@@ -36,7 +36,7 @@ sky-gui                                    # the real thing
 | Dashboard | Live values and charts, CSV recording, pause and start the script |
 | Configuration | Browse and search motor config, edit, review and write. App config is read only |
 | Backups | Back up, compare with the board, restore |
-| Scripts | Back up the stored Lisp script, try a file from RAM, store a file, restore a script backup: the same checks as `sky code` |
+| Scripts | Back up the stored Lisp script, try a file from RAM, store a file (optionally building its native libraries from source), restore a script backup: the same checks as `sky code`. **Rescue a boot-looping board** is on the start screen, with no board connected |
 | Console | Board messages, read-only terminal commands, the filtered REPL |
 | Updates | Status, pull and reset for this source folder, as on the SKY kiosk. Works with no board connected |
 

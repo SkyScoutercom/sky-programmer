@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..cli import ENGINE_PROMPT
+from .rescue import RESCUE_TEXT, RescueDialog
 
 PAUSE_TEXT = ("Pausing takes away the script's throttle and kill control, and it does not stop the engine. An engine "
               "running behind the relay is invisible to the board, so this check can't see it.")  # fmt: skip
@@ -131,6 +132,16 @@ class Prompts:
         title, prompt = (("Store a native library?", "Type YES to store it:") if storing else
                          ("Restore a native library?", "Type YES to restore it anyway:"))  # fmt: skip
         return self._typed(title, body, prompt, "Continue", danger=True)
+
+    def confirm_rescue(self) -> bool:
+        return self._typed("Rescue a boot-looping board", escape(RESCUE_TEXT), "Engine stopped, propeller clear? "
+                           "Type YES to erase the stored script:", "Start rescue", danger=True)  # fmt: skip
+
+    def rescue_progress(self, thread):
+        """A window showing the rescue's progress, with Cancel. It closes itself when the rescue ends."""
+        dialog = RescueDialog(self.parent, thread)
+        dialog.show()
+        return dialog
 
     def ask_script_path(self, start: str) -> str:
         return QFileDialog.getOpenFileName(self.parent, "Choose a Lisp script", start,
