@@ -83,3 +83,21 @@ Same board and firmware, run from the app on Ubuntu after updating it to 0.1.4.
 | 48 Try `servo_74_test.lisp` | **Pass** |
 | 49 Store `servo_74_test.lisp` | **Pass** |
 | 50 Restore the engine control script, with its `hall-capture` native library | **Pass.** The engine then ran on the restored script |
+
+## 2026-11-10: section I, native libraries: the start-up guard and the rescue
+
+Same board and firmware, `sky` from `stage-1` after PR #11, with the working `engine_control.lisp` and its
+`hall-capture` native library. Engine stopped, propeller off, RC channel 7 at OFF. All steps were reported as working
+as expected; no timings were sent back.
+
+| Step | Result |
+|---|---|
+| 51 Back up the stored script | **Pass** |
+| 52 Store `engine_control.lisp` with its native library and the start-up guard | **Pass** |
+| 53 Power-cycle with the motor still: about 10 s with no script messages, then the engine script | **Pass** |
+| 54 `sky code rescue` while the board powers up: backs up, then erases the script | **Pass** |
+| 55 No valid script stored, and none runs after a power-cycle | **Pass** |
+| 56 Store the engine script again and start it | **Pass** |
+
+Not tested yet: the rescue against a library that really crashes (it waits for a hardware fallback: an ST-Link, or
+the HALL2 jumper with a config backup), and a reset with the engine running, where the guard must not wait.
