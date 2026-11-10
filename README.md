@@ -98,6 +98,7 @@ To check an install, run `"SKY programmer.exe" --self-test report.txt`. It uses 
 | `sky code try <file.lisp>` | Run a script from RAM without storing it; a power-cycle brings back the stored one |
 | `sky code store <file.lisp> [--start]` | Store a script: backs up the old script and the config, erases, writes, reads every byte back |
 | `sky code restore <backup> [--start]` | Store one of this board's script backups again |
+| `sky code rescue --engine-stopped` | Wait for the board to power up, then erase its stored script inside the start-up guard window: breaks a native-library boot loop |
 
 ### Uploading a Lisp script
 
@@ -106,9 +107,13 @@ as a config write. Every erase and write releases the motor for up to 5 s, and t
 every power-up. A store that fails part-way leaves the board with no script: it still boots, and the command prints the
 `sky code restore` line that puts the old one back.
 
-Scripts that `import` files, such as native libraries, are refused for now: a native library that crashes can make the
-board reboot over and over (see [SAFETY.md](SAFETY.md)). Use VESC Tool for those until support is added. The design
-and the firmware facts behind it are in [docs/STAGE2_DESIGN.md](docs/STAGE2_DESIGN.md).
+Scripts that `import` files, such as native libraries, can be stored but not tried, and storing them asks a second
+YES. The files are packed exactly as VESC Tool packs them. A native library that crashes when it loads makes the board
+reboot over and over, so `sky code store` puts a start-up guard at the top of such a script: it waits 10 s after each
+power-up before anything loads. If a library ever boot-loops the board, run `sky code rescue --engine-stopped` and
+power-cycle: it erases the script inside that window, and the board starts with none (see [SAFETY.md](SAFETY.md); not
+yet tried with a crashing library). The design and the firmware facts behind it are in
+[docs/STAGE2_DESIGN.md](docs/STAGE2_DESIGN.md).
 
 ### Changing from BLDC to FOC
 

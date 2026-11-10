@@ -41,9 +41,10 @@ FORBIDDEN_WORDS = {
     "lbm-erase": "it erases stored code", "lbm-write": "it writes stored code", "lbm-run": "it runs stored code",
     "qml-erase": "it erases stored code", "qml-write": "it writes stored code",
     "cmds-start-stop": "it takes over the board's command handling",
-    "import": "imports, such as native libraries, aren't supported yet. Use VESC Tool for this script for now",
-    "load-native-lib": "native libraries aren't supported yet. Use VESC Tool for this script for now",
-    "unload-native-lib": "native libraries aren't supported yet. Use VESC Tool for this script for now",
+    # Allowed when storing (native=True), never when trying: streaming ignores imports (docs/LISP_UPLOAD_SPEC.md).
+    "import": "a script with imports can't run from RAM, because the firmware ignores imports when streaming. Store "
+    "it instead", "load-native-lib": "native libraries can't run from RAM. Store the script instead",
+    "unload-native-lib": "native libraries can't run from RAM. Store the script instead",
     # conf-set takes any value, unchecked, and these keep it: a bad switching frequency can hang the board at boot,
     # before USB starts (SAFETY.md). Change stored config with `sky set`, which checks it.
     "conf-store": "it stores config the programmer can't check; a bad value can hang the board at every boot",
@@ -66,7 +67,20 @@ FORBIDDEN_WORDS = {
 WARNING_WORDS = {
     "eeprom-store-f": "it writes the board's EEPROM", "eeprom-store-i": "it writes the board's EEPROM",
 }  # fmt: skip
+NATIVE_WORDS = frozenset({"import", "load-native-lib", "unload-native-lib"})
 HW_TYPE_VESC = 0  # the code area layout here is only known for STM32 VESC boards
+
+# The start-up guard added to every stored script that uses native libraries. A library that crashes when it loads
+# resets the board, which runs the script again: a boot loop. The firmware binds imports before the script runs but
+# only runs a library when `load-native-lib` is evaluated (lispif.c, lispif_c_lib.c), and it answers USB commands, the
+# erase among them, while the script sleeps (comm_usb.c). So waiting first leaves a window at every power-up in which
+# `sky code rescue` can erase the script. USB comes up about 0.5 s before the script starts; 10 s covers the laptop
+# re-detecting the board.
+GUARD_SECONDS = 10
+GUARD_MARK = ";; SKY programmer start-up guard"
+GUARD = (f"{GUARD_MARK}, added automatically: wait {GUARD_SECONDS} s after power-up before any native library\n"
+         ";; loads, so `sky code rescue` can erase this script if a library keeps crashing the board.\n"
+         f"(sleep {GUARD_SECONDS})\n")  # fmt: skip
 STREAM_DONE = "Stream done, starting..."  # lispif.c prints this only when the whole script arrived and starts
 
 
@@ -104,12 +118,17 @@ def symbols(text: str) -> list[str]:
     return out
 
 
-def check_script(text: str) -> list[str]:
-    """Refuse a script that would be unsafe to store or try. Returns warnings for words that are allowed."""
+def check_script(text: str, *, native: bool = False) -> list[str]:
+    """Refuse a script that would be unsafe to store or try. Returns warnings for words that are allowed.
+
+    native: allow imports and native libraries, which only storing supports.
+    """
     if "\0" in text:
         raise SafetyRefusal("the script contains a NUL character, which would end it early on the board.")
     found = set(symbols(text))
-    refused = sorted(found & set(FORBIDDEN_WORDS))
+    if not native and find_imports(text):
+        found.add("import")  # an import line VESC Tool would pack, even if the symbol reader saw it differently
+    refused = sorted(found & (set(FORBIDDEN_WORDS) - (NATIVE_WORDS if native else set())))
     if refused:
         raise SafetyRefusal("this script can't be uploaded: " + "; ".join(f"`{w}`: {FORBIDDEN_WORDS[w]}"
                                                                           for w in refused) + ".")  # fmt: skip
@@ -122,6 +141,86 @@ def pack(text: str) -> bytes:
     if len(content) > MAX_CONTENT_BYTES:
         raise SafetyRefusal(f"the script is {len(content)} bytes; the board holds at most {MAX_CONTENT_BYTES}.")
     return content
+
+
+def find_imports(text: str) -> list[tuple[int, str, str]]:
+    """(line number, path, name) of each import, read line by line exactly as VESC Tool's uploader reads them
+    (codeloader.cpp, getImportFromLine), so a script packs the same in both tools."""
+    found = []
+    for number, line in enumerate(text.split("\n"), 1):
+        line = line.lstrip(" ")
+        while line.startswith("( "):
+            line = "(" + line[2:]
+        if not line.lower().startswith("(import "):
+            continue
+        start, end = line.find('"'), line.rfind('"')
+        path = line[start + 1:end] if 0 < start < end else ""
+        name = "".join(c for c in line[end + 1:] if c not in "\r )'") if 0 < start < end else ""
+        name = name.split(";")[0]
+        if not path or not name:
+            raise SafetyRefusal(f"line {number}: this import can't be read: {line.strip()[:80]}")
+        found.append((number, path, name))
+    return found
+
+
+def uses_native(text: str) -> bool:
+    return bool(find_imports(text)) or bool(set(symbols(text)) & NATIVE_WORDS)
+
+
+def has_guard(text: str) -> bool:
+    return text.startswith(GUARD_MARK)
+
+
+def pack_script(text: str, folder, *, guard: bool = True) -> tuple[bytes, list[tuple[str, int]]]:
+    """The stored content of a script and its imports, as VESC Tool's lispPackImports builds it, and (name, size) of
+    each imported file. A script using native libraries gets the start-up guard first.
+
+    Layout: text, NUL, int16 count, then per import its name, NUL, int32 offset, int32 size, then each file plus a NUL,
+    4-byte aligned from the start of the content, because a library runs from where it's stored.
+    """
+    imports = find_imports(text)
+    if not uses_native(text):
+        return pack(text), []
+    text = text if has_guard(text) or not guard else GUARD + text  # guard=False only to compare with VESC Tool
+    files = []
+    for number, path, name in imports:
+        if path.startswith(("pkg::", "pkg@")):
+            raise SafetyRefusal(f"line {number}: imports from VESC packages aren't supported. Use VESC Tool for this "
+                                "script.")  # fmt: skip
+        found = next((f for f in (Path(folder) / path, Path(path)) if f.is_file()), None)
+        if found is None:
+            raise SafetyRefusal(f"line {number}: imported file not found: {Path(folder) / path}")
+        try:
+            files.append((name, found.read_bytes() + b"\0"))  # VESC Tool adds the NUL in case it's a text file
+        except OSError as e:
+            raise SafetyRefusal(f"line {number}: can't read {found}: {e}") from e
+    out = bytearray(text.encode("utf-8") + b"\0" + struct.pack(">h", len(files)))
+    offset = len(out) + sum(len(name.encode("utf-8")) + 9 for name, _ in files)
+    for name, data in files:
+        offset += -offset % 4
+        out += name.encode("utf-8") + b"\0" + struct.pack(">ii", offset, len(data))
+        offset += len(data)
+    for _, data in files:
+        out += b"\0" * (-len(out) % 4)
+        out += data
+    if len(out) > MAX_CONTENT_BYTES:
+        raise SafetyRefusal(f"the script and its imports are {len(out)} bytes; the board holds at most "
+                            f"{MAX_CONTENT_BYTES}.")  # fmt: skip
+    return bytes(out), [(name, len(data) - 1) for name, data in files]
+
+
+def unpack_imports(content: bytes) -> list[tuple[str, bytes]]:
+    """(name, data) of each file packed after the script text, data without VESC Tool's trailing NUL."""
+    end = content.find(b"\0")
+    count = import_count(content)
+    out, i = [], end + 3
+    for _ in range(max(count, 0)):
+        stop = content.index(b"\0", i)
+        name = content[i:stop].decode("utf-8", errors="replace")
+        offset, size = struct.unpack_from(">ii", content, stop + 1)
+        out.append((name, content[offset:offset + size].removesuffix(b"\0")))
+        i = stop + 9
+    return out
 
 
 def image(content: bytes) -> bytes:
@@ -228,8 +327,12 @@ def load_backup(path) -> dict:
     return doc
 
 
-NATIVE_RISK = ("If a native library crashes at start-up, the board can reboot over and over, and only the HALL2-SWCLK "
-               "jumper or an SWD programmer recovers it (see SAFETY.md).")  # fmt: skip
+NATIVE_RISK = ("If a native library crashes when it loads, the board resets and loads it again, over and over. Without "
+               "the start-up guard, only the HALL2-SWCLK jumper, which also resets the config to defaults, or an SWD "
+               "programmer recovers it (see SAFETY.md).")  # fmt: skip
+GUARD_NOTE = (f"Scripts stored with the SKY programmer get a start-up guard: they wait {GUARD_SECONDS} s after each "
+              "power-up before loading a library, and `sky code rescue` can erase the script in that "
+              "window.")  # fmt: skip
 
 
 def check_restore(doc: dict, ident: dict) -> int:
@@ -357,3 +460,57 @@ def try_script(prog, text: str) -> dict:
                            "Power-cycle the board with the engine stopped, then try again.")  # fmt: skip
     prog.script_paused = False  # the streamed script is running
     return {"bytes": len(data), "config_backup": str(config_backup)}
+
+
+# ---------------------------------------------------------------------- breaking a boot loop
+RESCUE_WAIT_S = 120.0
+# The script starts about 0.5 s after USB (commands.c waits for main to finish), and an erase during its start-up
+# could meet an uninitialised mutex (lispif.c), so wait this long after the board answers. The guard leaves ~9 s more.
+RESCUE_SETTLE_S = 2.0
+
+
+def rescue(open_link, find_ports, backup_dir, *, wait_s: float = RESCUE_WAIT_S, clock=time.monotonic,
+           sleep=time.sleep, say=print) -> dict:  # fmt: skip
+    """Wait for the board to appear, then erase its stored script, so its next boot runs none.
+
+    For a board boot-looping on a native library: the erase stops the script first (commands.c, lispif_stop), and the
+    start-up guard keeps the library from loading for GUARD_SECONDS. A board that resets midway is waited for again.
+    """
+    from .programmer import Programmer  # here, so importing this module stays light
+
+    deadline, last_problem = clock() + wait_s, "the board never appeared"
+    while clock() < deadline:
+        ports = find_ports()
+        if len(ports) > 1:
+            raise SafetyRefusal(f"more than one possible board ({', '.join(ports)}). Pick one with --port.")
+        if not ports:
+            sleep(0.05)
+            continue
+        try:
+            link = open_link(ports[0])
+        except CommsError as e:  # e.g. ModemManager still probing the new port
+            last_problem = str(e)
+            sleep(0.1)
+            continue
+        try:
+            prog = Programmer(link, backup_dir, say=lambda *_: None)
+            ident = prog.identify()
+            require_vesc_hardware(prog)
+            prog.require_idle(prog.read_conf(MC_ROOT))
+            say(f"Found {ident['hw']}, UUID {ident['uuid']}, on {ports[0]}. Erasing its script in "
+                f"{RESCUE_SETTLE_S:g} s.")  # fmt: skip
+            sleep(RESCUE_SETTLE_S)
+            reply = link.request(bytes([p.COMM_LISP_ERASE_CODE]) + struct.pack(">i", CODE_AREA_BYTES),
+                                 timeout=ERASE_TIMEOUT_S, code_write=True)  # fmt: skip
+            if len(reply) < 2 or reply[1] != 1:
+                raise VerifyFailed("the board didn't confirm the erase. Run the rescue again.")
+            if read_code(prog):
+                raise VerifyFailed("a script is still stored after the erase. Run the rescue again.")
+            return {"port": ports[0], "uuid": ident["uuid"], "hw": ident["hw"]}
+        except CommsError as e:  # it reset in the middle: wait for it to come back
+            last_problem = str(e)
+            say("Lost the board, probably a reset. Waiting for it to come back.")
+        finally:
+            link.close()
+    raise CommsError(f"no rescue within {wait_s:g} s: {last_problem}. If the script has no start-up guard, use the "
+                     "HALL2-SWCLK jumper or an SWD programmer (SAFETY.md).")  # fmt: skip

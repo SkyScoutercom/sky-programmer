@@ -1833,3 +1833,29 @@ def test_scripts_page_is_off_for_unsupported_firmware(gui):
     win, _, _ = gui(fw=(6, 6))
     page = win.scripts_page
     assert not any(b.isEnabled() for b in (page.backup_button, page.try_button, page.store_button))
+
+
+def test_scripts_page_stores_a_native_script_with_the_guard_after_a_second_yes(gui, tmp_path):
+    from sky_programmer import code
+
+    win, fake, prompts = gui()
+    (tmp_path / "a.bin").write_bytes(b"\x01\x02\x03\x04")
+    text = '(import "a.bin" \'liba)\n(load-native-lib liba)\n'
+    prompts.script_path = _script_file(tmp_path, text)
+    prompts.native_answer = False
+    win.scripts_page.store_file()
+    settle(win)
+    assert prompts.natives == [1] and prompts.stores == [] and fake.code_erases == 0
+    prompts.native_answer = True
+    win.scripts_page.store_file()
+    settle(win)
+    stored = fake.stored_content()
+    assert stored == code.pack_script(text, tmp_path)[0] and code.has_guard(code.script_text(stored))
+
+
+def test_scripts_page_try_refuses_a_native_script(gui, tmp_path):
+    win, fake, prompts = gui()
+    prompts.script_path = _script_file(tmp_path, '(import "a.bin" \'liba)\n')
+    win.scripts_page.try_file()
+    settle(win)
+    assert prompts.tries == [] and fake.stream_starts == 0 and "RAM" in prompts.errors[-1][1]
