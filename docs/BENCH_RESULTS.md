@@ -80,6 +80,6 @@ Same board and firmware, run from the app on Ubuntu after updating it to 0.1.4.
 | Step | Result |
 |---|---|
 | 47 Back up stored script | **Pass** |
-| 48 Try a file | Not reported. The same `try` passed in the terminal in step 37 |
+| 48 Try `servo_74_test.lisp` | **Pass** |
 | 49 Store `servo_74_test.lisp` | **Pass** |
 | 50 Restore the engine control script, with its `hall-capture` native library | **Pass.** The engine then ran on the restored script |
