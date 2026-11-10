@@ -1,6 +1,6 @@
 """Stage 2 step 1: backing up, trying and storing Lisp scripts, against the simulated firmware 7.00 code area."""
+import io
 import json
-import os
 import struct
 
 import pytest
@@ -367,7 +367,7 @@ def sky(board, tmp_path, capsys, monkeypatch):
     from sky_programmer import cli
 
     fake, prog = board()
-    monkeypatch.setattr("sys.stdin", open(os.devnull))
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # never a terminal; Windows calls NUL one
 
     def run(*argv):
         rc = cli.main(["--port", "fake", "--backup-dir", str(prog.backup_dir), *argv],
@@ -437,7 +437,7 @@ def test_cli_restore_refuses_an_empty_backup(board, tmp_path, capsys, monkeypatc
 
     fake, prog = board(script_present=False)
     path = code.save_backup(prog, b"", "manual")
-    monkeypatch.setattr("sys.stdin", open(os.devnull))
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # never a terminal; Windows calls NUL one
     rc = cli.main(["--port", "fake", "--backup-dir", str(prog.backup_dir), "code", "restore", str(path),
                    "--engine-stopped"], serial_factory=lambda _port: fake)  # fmt: skip
     assert rc == 2 and "nothing to restore" in capsys.readouterr().err and fake.code_erases == 0
