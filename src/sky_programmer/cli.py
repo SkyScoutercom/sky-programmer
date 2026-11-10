@@ -271,7 +271,7 @@ def _print_builds(builds) -> dict:
     fresh = {}
     for path, name, result in builds:
         if result is None:
-            print(f"{name}: {path} has no source and Makefile next to it, so it's stored as it is.")
+            print(f"{name}: {path} has no source and Makefile next to it, so there's nothing to build.")
             continue
         fresh[path] = result.data
         commit = result.commit[:8] if result.commit else "an unknown commit"
@@ -287,15 +287,17 @@ def _print_builds(builds) -> dict:
 
 
 def cmd_code_build(args, serial_factory, ports) -> int:
-    """Build and check a script's native libraries. Needs no board, and writes nothing."""
+    """Build and check a script's native libraries. Needs no board."""
     text = _read_script(args.file)
     code.check_script(text, native=True)
+    print("Building runs each library's own Makefile, in a temporary copy: only build projects you trust.")
     builds = native.build_imports(text, Path(args.file).parent)
     if not builds:
         print("This script imports nothing, so there's nothing to build.")
         return 0
     _print_builds(builds)
-    print("Nothing was written: the board and the project folder are unchanged.")
+    print("Nothing was sent to a board. The interface files weren't compared with a board's firmware: "
+          "`sky code store --build` does that before storing.")  # fmt: skip
     return 0
 
 
@@ -305,12 +307,16 @@ def cmd_code_store(prog, args) -> int:
         print(f"Warning: {warning}")
     built = None
     if args.build:
+        print("Building runs each library's own Makefile, in a temporary copy: only build projects you trust.")
         builds = native.build_imports(text, Path(args.file).parent)
         built = _print_builds(builds)
+        prebuilt = [path for path, _, result in builds if result is None]
+        if prebuilt:
+            raise SafetyRefusal(f"--build was asked for, but {', '.join(prebuilt)} has no source to build from. Store "
+                                "without --build to use the file as it is.")  # fmt: skip
         firmware = native.board_commit(prog)
         for _, _, result in builds:
-            if result is not None:
-                native.require_matching_interface(result.commit, firmware)
+            native.require_matching_interface(result.commit, firmware)
     content, files = code.pack_script(text, Path(args.file).parent, built=built)
     if code.uses_native(text):
         names = ", ".join(f"{name} ({size} bytes)" for name, size in files) or "none imported"
