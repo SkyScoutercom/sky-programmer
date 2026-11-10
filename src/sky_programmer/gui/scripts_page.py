@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -18,14 +19,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import code
+from .. import code, native
 from ..config import MC_ROOT
 from ..errors import SafetyRefusal
 
 NOTE = ("A stored script runs at every power-up. Try a script first: it runs from RAM until the next power-up and "
         "stores nothing. Storing backs up the old script and the config, then reads every byte back. Scripts with "
-        "native libraries can be stored but not tried, and get a start-up guard: they wait 10 s after each power-up "
-        "before loading a library, so `sky code rescue` in a terminal can break a boot loop.")  # fmt: skip
+        "native libraries can be stored but not tried, and get a start-up guard: at a power-up with the motor still "
+        "they wait 10 s before loading a library, so a boot loop can be broken with Rescue on the start screen. Tick "
+        "Build from source to store libraries freshly built from their C source.")  # fmt: skip
 
 
 def _precheck(prog) -> None:
@@ -52,12 +54,16 @@ class ScriptsPage(QWidget):
         self.try_button.clicked.connect(self.try_file)
         self.store_button = QPushButton("Store a file…")
         self.store_button.clicked.connect(self.store_file)
+        self.build_box = QCheckBox("Build from source")
+        self.build_box.setToolTip("Store native libraries freshly built from their C source, after checking them. "
+                                  "Needs the Arm GNU Toolchain 13.3.rel1 (Linux). It runs the project's own "
+                                  "Makefile: only build projects you trust.")  # fmt: skip
         self.restore_button = QPushButton("Restore…")
         self.restore_button.clicked.connect(self.restore)
         self.backup_button = QPushButton("Back up stored script")
         self.backup_button.setObjectName("Primary")
         self.backup_button.clicked.connect(self.backup_now)
-        for b in (self.try_button, self.store_button, self.restore_button, self.backup_button):
+        for b in (self.try_button, self.store_button, self.build_box, self.restore_button, self.backup_button):
             bar.addWidget(b)
         root.addLayout(bar)
         note = QLabel(NOTE)
@@ -188,12 +194,38 @@ class ScriptsPage(QWidget):
         if picked is None:
             return
         path, text, warnings = picked
+        if self.build_box.isChecked() and code.uses_native(text):
+            self._build_then_store(path, text, warnings)
+        else:
+            self._pack_and_store(path, text, warnings)
+
+    def _build_then_store(self, path: Path, text: str, warnings) -> None:
+        """Build on the board thread, which also reads the board's firmware commit for the interface check."""
+        board = self.win.board
+        if board is None:
+            return
+
+        def job(prog):
+            builds = native.build_imports(text, path.parent)
+            return builds, native.fresh_builds_for_board(prog, builds)
+
+        def built(result):
+            builds, fresh = result
+            report = native.report_lines(builds)
+            for line in report:
+                self.win.log(line)
+            self._pack_and_store(path, text, warnings, built=fresh, report=report)
+
+        self.win.log("Building runs each library's own Makefile, in a temporary copy: only build projects you trust.")
+        board.submit(job, built, self.win.report, exclusive=True)
+
+    def _pack_and_store(self, path: Path, text: str, warnings, *, built=None, report=()) -> None:
         try:
-            content, files = code.pack_script(text, path.parent)
+            content, files = code.pack_script(text, path.parent, built=built)
         except SafetyRefusal as e:
             self.win.report(e)
             return
-        libraries = code.library_lines(code.unpack_imports(content))
+        libraries = [*code.library_lines(code.unpack_imports(content)), *report]
         if code.uses_native(text) and not self.win.prompts.confirm_native(
                 len(files), f"{code.NATIVE_RISK} {code.GUARD_NOTE}", storing=True, libraries=libraries):  # fmt: skip
             self.win.log("Cancelled. Nothing was written.")
@@ -251,6 +283,7 @@ class ScriptsPage(QWidget):
         self.backup_button.setEnabled(idle)
         self.try_button.setEnabled(idle)
         self.store_button.setEnabled(idle)
+        self.build_box.setEnabled(idle)
         self.restore_button.setEnabled(idle and bool(self.table.selectedItems()))
 
     def on_connected(self, info: dict) -> None:

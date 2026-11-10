@@ -54,9 +54,17 @@ class FakePrompts:
         self.stores.append((what, size, warnings, target))
         return self.store_answer
 
-    def confirm_native(self, imports, risk, **_):
+    def confirm_native(self, imports, risk, *, storing=False, libraries=()):
         self.natives.append(imports)
+        self.native_libraries = list(libraries)
         return self.native_answer
+
+    def confirm_rescue(self):
+        self.rescue_asks = getattr(self, "rescue_asks", 0) + 1
+        return getattr(self, "rescue_answer", True)
+
+    def rescue_progress(self, thread):
+        return None  # no window in tests
 
     def ask_script_path(self, start):
         return getattr(self, "script_path", "")
@@ -1859,3 +1867,71 @@ def test_scripts_page_try_refuses_a_native_script(gui, tmp_path):
     win.scripts_page.try_file()
     settle(win)
     assert prompts.tries == [] and fake.stream_starts == 0 and "RAM" in prompts.errors[-1][1]
+
+
+# ---------------------------------------------------------------------- rescue and build from source in the app
+def test_rescue_from_the_start_screen_erases_the_script(gui, monkeypatch):
+    from sky_programmer import code
+
+    monkeypatch.setattr(code, "RESCUE_SETTLE_S", 0.0)
+    win, fake, prompts = gui(connect=False)
+    assert win.rescue_button.isEnabled()
+    win.start_rescue()
+    assert prompts.rescue_asks == 1 and not win.connect_button.isEnabled()
+    wait_until(lambda: win._rescue is None)
+    assert fake.stored_content() is None and fake.code_erases == 1
+    assert prompts.infos[-1][0] == "Rescued" and "backed up" in prompts.infos[-1][1]
+    assert win.connect_button.isEnabled() and win.rescue_button.isEnabled()
+
+
+def test_rescue_can_be_cancelled_before_anything_is_erased(gui):
+    win, fake, prompts = gui(connect=False)
+    win.ports = lambda: []  # the board never comes up
+    win.start_rescue()
+    win._rescue.stop()
+    wait_until(lambda: win._rescue is None)
+    assert fake.code_erases == 0 and prompts.errors == []
+
+
+def test_rescue_needs_the_board_disconnected_and_a_yes(gui):
+    win, fake, prompts = gui()
+    win.start_rescue()
+    assert prompts.infos[-1][0] == "Disconnect first" and win._rescue is None and not win.rescue_button.isEnabled()
+    win.disconnect_board()
+    wait_until(lambda: win.board is None)
+    prompts.rescue_answer = False
+    win.start_rescue()
+    assert win._rescue is None and fake.code_erases == 0
+
+
+def _native_build(tmp_path, monkeypatch, fake, commit):
+    from sky_programmer import native
+
+    fake.prints_on_term = ["Git Hash  : 20cbb362687291242ab90b99f25fbfe8835540fc"]
+    (tmp_path / "a.bin").write_bytes(b"\x01\x02\x03\x04")
+    fresh = native.Build("a", b"\x09" * 8, "13.3.1", commit, False, ["code.c uses `set_pad_mode`: pins."])
+    monkeypatch.setattr(native, "build_imports", lambda text, folder: [("a.bin", "liba", fresh)])
+    return _script_file(tmp_path, '(import "a.bin" \'liba)\n(load-native-lib liba)\n')
+
+
+def test_scripts_page_stores_libraries_built_from_source(gui, tmp_path, monkeypatch):
+    from sky_programmer import code
+
+    win, fake, prompts = gui()
+    prompts.script_path = _native_build(tmp_path, monkeypatch, fake, "20cbb362687291242ab90b99f25fbfe8835540fc")
+    win.scripts_page.build_box.setChecked(True)
+    win.scripts_page.store_file()
+    settle(win)
+    assert code.unpack_imports(fake.stored_content()) == [("liba", b"\x09" * 8)]
+    assert any("differs from this build" in line for line in prompts.native_libraries)
+    assert any("set_pad_mode" in line for line in prompts.native_libraries)
+
+
+def test_scripts_page_refuses_a_build_for_other_firmware(gui, tmp_path, monkeypatch):
+    win, fake, prompts = gui()
+    prompts.script_path = _native_build(tmp_path, monkeypatch, fake, "e877eae" + "0" * 33)
+    win.scripts_page.build_box.setChecked(True)
+    win.scripts_page.store_file()
+    settle(win)
+    assert prompts.errors[-1][0] == "Refused" and "e877eae" in prompts.errors[-1][1]
+    assert fake.code_erases == 0 and prompts.natives == []

@@ -35,6 +35,7 @@ from .console_page import ConsolePage
 from .dashboard import Dashboard
 from .demo import DemoBoard
 from .prompts import Prompts
+from .rescue import RescueThread
 from .scripts_page import ScriptsPage
 from .updates_page import UpdatesPage
 from .widgets import Banner, Pill
@@ -75,6 +76,7 @@ class MainWindow(QMainWindow):
         saved = str(self.settings.value("paused_boards", ""))
         self._paused_uuids: set = {uuid for uuid in saved.split(",") if uuid}
         self._connecting, self._closing = False, False
+        self._rescue, self._rescue_dialog = None, None  # a rescue running with no board connected
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -238,7 +240,11 @@ class MainWindow(QMainWindow):
         self.try_simulated_button = QPushButton("Try with a simulated board")
         self.try_simulated_button.setToolTip("Everything works as with a real board, and nothing touches hardware")
         self.try_simulated_button.clicked.connect(self.connect_simulated)
-        for w in (logo, title, text, self.try_simulated_button):
+        self.rescue_button = QPushButton("Rescue a boot-looping board…")
+        self.rescue_button.setToolTip("Erase the stored script as the board powers up, when a native library keeps "
+                                      "it rebooting")  # fmt: skip
+        self.rescue_button.clicked.connect(self.start_rescue)
+        for w in (logo, title, text, self.try_simulated_button, self.rescue_button):
             col.addWidget(w)
         lay.addWidget(card, 0, Qt.AlignmentFlag.AlignCenter)
         return page
@@ -310,6 +316,9 @@ class MainWindow(QMainWindow):
             return
         if self.updates_page.busy:
             self.prompts.info("Please wait", "An update is running. Connect when it has finished.")
+            return
+        if self._rescue is not None:
+            self.prompts.info("Please wait", "A rescue is running. Connect when it has finished.")
             return
         if not port:
             self.prompts.error("No port chosen", "Plug in the board, or choose or type its port.")
@@ -553,13 +562,56 @@ class MainWindow(QMainWindow):
             item.setFlags(flags | enabled if connected else flags & ~enabled)
         self.port_combo.setEnabled(self.board is None)
         self.connect_button.setText("Disconnect" if self.board is not None else "Connect")
-        self.connect_button.setEnabled(not self._connecting and not busy and not self.updates_page.busy)
+        self.connect_button.setEnabled(not self._connecting and not busy and not self.updates_page.busy
+                                       and self._rescue is None)  # fmt: skip
+        self.rescue_button.setEnabled(self.board is None and self._rescue is None and not self._connecting)
         self.baseline_button.setEnabled(config_ok and not busy)
         for button in self.paused_banner_buttons:
             button.setEnabled(connected and not busy)
         self.progress.setVisible(busy)
 
+    # ---------------------------------------------------------------- rescue
+    def start_rescue(self) -> None:
+        """Erase the stored script as the board powers up. Runs with no board connected: it makes its own."""
+        if self.board is not None or self._rescue is not None:
+            self.prompts.info("Disconnect first", "The rescue needs the board's port to itself. Disconnect, then "
+                              "start it again.")  # fmt: skip
+            return
+        if not self.prompts.confirm_rescue():
+            self.log("Cancelled. Nothing was erased.")
+            return
+        thread = RescueThread(self.link_factory, self.ports, self._real_backup_dir, self)
+        self._rescue = thread
+        thread.message.connect(self.log)
+        thread.done.connect(self._rescue_done)
+        self._rescue_dialog = self.prompts.rescue_progress(thread)
+        thread.start()
+        self._sync()
+
+    def _rescue_done(self) -> None:
+        thread, dialog = self._rescue, self._rescue_dialog
+        self._rescue, self._rescue_dialog = None, None
+        thread.wait()
+        if dialog is not None:
+            dialog.accept()
+        self._sync()
+        if isinstance(thread.error, SafetyRefusal) and "cancelled" in str(thread.error):
+            self.log(self.words(thread.error))
+        elif thread.error is not None:
+            self.report(thread.error)
+        else:
+            res = thread.result
+            text = (f"Erased. {res['hw']}, UUID {res['uuid']}, now starts with no script. Its script was backed up "
+                    "first: it's on the Scripts page once you connect. Fix the library before storing it again.")
+            self.log(text)
+            self.prompts.info("Rescued", text)
+        thread.deleteLater()
+
     def closeEvent(self, event) -> None:
+        if self._rescue is not None:
+            self.prompts.info("Please wait", "A rescue is running. Cancel it first, then close.")
+            event.ignore()
+            return
         if self.updates_page.busy:
             self.prompts.info("Please wait", "An update is running. Closing now could leave the folder half changed.")
             event.ignore()

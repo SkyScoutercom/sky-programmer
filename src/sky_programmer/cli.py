@@ -266,24 +266,9 @@ def cmd_code_try(prog, args) -> int:
     return 0
 
 
-def _print_builds(builds) -> dict:
-    """Report each import's build. Returns {import path: freshly built bytes}."""
-    fresh = {}
-    for path, name, result in builds:
-        if result is None:
-            print(f"{name}: {path} has no source and Makefile next to it, so there's nothing to build.")
-            continue
-        fresh[path] = result.data
-        commit = result.commit[:8] if result.commit else "an unknown commit"
-        print(f"{name}: built from source, {len(result.data)} bytes, SHA-256 {result.sha256}, gcc {result.version}, "
-              f"interface files at {commit}.")  # fmt: skip
-        if result.matches_committed is False:
-            print(f"  The committed {path} differs from this build of its source.")
-        elif result.matches_committed:
-            print(f"  The committed {path} matches this build byte for byte.")
-        for warning in result.warnings:
-            print(f"  Warning: {warning}")
-    return fresh
+def _print_builds(builds) -> None:
+    for line in native.report_lines(builds):
+        print(line)
 
 
 def cmd_code_build(args, serial_factory, ports) -> int:
@@ -309,14 +294,8 @@ def cmd_code_store(prog, args) -> int:
     if args.build:
         print("Building runs each library's own Makefile, in a temporary copy: only build projects you trust.")
         builds = native.build_imports(text, Path(args.file).parent)
-        built = _print_builds(builds)
-        prebuilt = [path for path, _, result in builds if result is None]
-        if prebuilt:
-            raise SafetyRefusal(f"--build was asked for, but {', '.join(prebuilt)} has no source to build from. Store "
-                                "without --build to use the file as it is.")  # fmt: skip
-        firmware = native.board_commit(prog)
-        for _, _, result in builds:
-            native.require_matching_interface(result.commit, firmware)
+        _print_builds(builds)
+        built = native.fresh_builds_for_board(prog, builds)
     content, files = code.pack_script(text, Path(args.file).parent, built=built)
     if code.uses_native(text):
         names = ", ".join(f"{name} ({size} bytes)" for name, size in files) or "none imported"

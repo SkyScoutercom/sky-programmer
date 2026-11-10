@@ -133,6 +133,18 @@ No crashing library here: this checks the guard and the rescue with the working 
 | 55 | `sky code backup`, then power-cycle and `sky monitor --seconds 15` | No valid script is stored, and no script messages appear |
 | 56 | Step 52 again, answering YES to starting it. Wait 10 s | The engine script is back and running |
 
+## J. The desktop app: rescue and build from source
+
+Same precautions: engine stopped, propeller off, **RC channel 7 at OFF**. Have `engine_control.lisp` stored with its
+guard (section I) first.
+
+| # | Action | Expect |
+|---|---|---|
+| 57 | Scripts page: tick **Build from source**, **Store a file…**, pick `engine_control.lisp`, answer the questions, then cancel the start question | The native-library question lists `hall-capture` with "matches this build byte for byte" and the `set_pad_mode` warning, then "Script stored" |
+| 58 | Disconnect. On the start screen, **Rescue a boot-looping board…**, type YES, then power-cycle the board | The rescue window shows "Found …", "Backed up its script first …", then the app says "Rescued" |
+| 59 | Connect, Scripts page, **Back up stored script** | "No valid script is stored". The list also shows the "pre-rescue" backup |
+| 60 | Step 57 again, starting it at the end | The engine script is back and running |
+
 Please send back any step that didn't match, with its output. Steps 6, 7, 11, 13, 15 and 17 test assumptions the
 simulated board can't confirm.
 
