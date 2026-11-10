@@ -69,7 +69,7 @@ backup can be restored.
 2. Independent review, then a bench test with `servo_74_test.lisp`.
 3. Scripts with native libraries, once the recovery path on the Flipsky board is confirmed.
 4. Building C libraries (`make`), with the source checks above.
-5. The Scripts page in the desktop app.
+5. The Scripts page in the desktop app: built for Lisp scripts (`gui/scripts_page.py`), on the same engine; bench section H.
 
 ## Open questions
 

@@ -21,6 +21,8 @@ from ..cli import ENGINE_PROMPT
 PAUSE_TEXT = ("Pausing takes away the script's throttle and kill control, and it does not stop the engine. An engine "
               "running behind the relay is invisible to the board, so this check can't see it.")  # fmt: skip
 PAUSE_PROMPT = "Engine stopped? Type YES to pause the script and release the motor:"
+STARTER_NOTE = ("If the script can run a starter or an engine, set its input to off first, for example the RC channel "
+                "that selects OFF. On the bench, an engine script cranked the starter at IDLE.")  # fmt: skip
 BASELINE_TEXT = ("The board differs from its last backup. If a script made these changes, they're temporary, and a new "
                  "backup would make them this board's settings, so the next write would store them. Power-cycle first "
                  "to clear them, or back up anyway if you changed these on purpose.")  # fmt: skip
@@ -106,6 +108,29 @@ class Prompts:
 
     def confirm_pause(self) -> bool:
         return self._typed("Pause script", PAUSE_TEXT, PAUSE_PROMPT, "Pause script")
+
+    def confirm_try(self, name: str, size: int, warnings) -> bool:
+        body = (f"This runs <b>{escape(name)}</b> ({size} bytes) from RAM in place of the stored script, until the "
+                "board is power-cycled. Nothing is stored. Its messages, and any error in it, show in the Console."
+                f"<br><br>{STARTER_NOTE}")  # fmt: skip
+        return self._typed("Try script", body, "It may move the motor or servo. Engine stopped, propeller clear? Type "
+                           "YES to run it:", "Run script", warnings=warnings)  # fmt: skip
+
+    def confirm_store(self, what: str, size: int, warnings, target: str) -> bool:
+        body = (f"This stores <b>{escape(what)}</b> ({size} bytes) on <b>{escape(target)}</b>, which runs it at every "
+                "power-up from now on. The old script and the config are backed up first, and every byte is read back "
+                "after writing. The running script stops, and every erase and write releases the motor for up to "
+                f"5 s.<br><br>{STARTER_NOTE}")  # fmt: skip
+        return self._typed("Store script", body, ENGINE_PROMPT, "Store on board", warnings=warnings)
+
+    def confirm_native(self, imports: int, native_risk: str) -> bool:
+        body = f"This backup includes {imports} imported file(s), such as a native library. {escape(native_risk)}"
+        return self._typed("Restore a native library?", body, "Type YES to restore it anyway:", "Continue",
+                           danger=True)  # fmt: skip
+
+    def ask_script_path(self, start: str) -> str:
+        return QFileDialog.getOpenFileName(self.parent, "Choose a Lisp script", start,
+                                           "LispBM (*.lisp *.lbm);;All files (*)")[0]  # fmt: skip
 
     def confirm_new_baseline(self, rows) -> bool:
         return self._typed("Back up these changes too?", BASELINE_TEXT, "Type YES to make these the board's settings:",

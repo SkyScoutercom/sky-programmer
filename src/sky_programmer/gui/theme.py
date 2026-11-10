@@ -230,6 +230,8 @@ _NAV_ICONS = {
                      '<circle cx="8.5" cy="17" r="2.3"/>',
     "Backups": '<rect x="3" y="4" width="18" height="5" rx="1.6"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/>'
                '<path d="M10 13.5h4"/>',
+    "Scripts": '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'
+               '<path d="M10.5 11.5l-2 2.5 2 2.5M13.5 11.5l2 2.5-2 2.5"/>',
     "Console": '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9.5l3 2.5-3 2.5M13 15h4"/>',
     "Updates": '<circle cx="6" cy="5.5" r="2.2"/><circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="7.5" r="2.2"/>'
                '<path d="M6 7.7v8.6M18 9.7c0 4.3-6.5 3-10.2 6.6"/>',

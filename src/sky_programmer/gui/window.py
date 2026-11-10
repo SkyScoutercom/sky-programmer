@@ -35,12 +35,13 @@ from .console_page import ConsolePage
 from .dashboard import Dashboard
 from .demo import DemoBoard
 from .prompts import Prompts
+from .scripts_page import ScriptsPage
 from .updates_page import UpdatesPage
 from .widgets import Banner, Pill
 from .wording import humanize
 
 SIMULATED_PORT = "Simulated board"
-NAV = ("Dashboard", "Configuration", "Backups", "Console", "Updates")
+NAV = ("Dashboard", "Configuration", "Backups", "Scripts", "Console", "Updates")
 
 
 def _default_settings_path() -> Path:
@@ -91,12 +92,13 @@ class MainWindow(QMainWindow):
         self.stack.setObjectName("Pages")
         self.dashboard, self.config_page = Dashboard(self), ConfigPage(self)
         self.backups_page, self.console = BackupsPage(self), ConsolePage(self)
+        self.scripts_page = ScriptsPage(self)
         saved_repo = self.settings.value("repo")
         # A packaged .exe has no source folder, and a pull couldn't change it: a new version is a new download.
         self.packaged = bool(getattr(sys, "frozen", False))
         checkout = None if self.packaged else gitops.find_checkout()
         self.updates_page = UpdatesPage(self, repo_dir or saved_repo or checkout)
-        self.board_pages = (self.dashboard, self.config_page, self.backups_page, self.console)
+        self.board_pages = (self.dashboard, self.config_page, self.backups_page, self.scripts_page, self.console)
         self.pages = (*self.board_pages, self.updates_page)
         self.welcome = self._build_welcome()
         self.stack.addWidget(self.welcome)
@@ -120,7 +122,7 @@ class MainWindow(QMainWindow):
         self.progress.setTextVisible(False)
         self.progress.hide()
         self.statusBar().addPermanentWidget(self.progress)
-        self.statusBar().addPermanentWidget(QLabel("Stage 1. Bench-tested on one board: see docs/BENCH_RESULTS.md"))
+        self.statusBar().addPermanentWidget(QLabel("Bench-tested on one board: see docs/BENCH_RESULTS.md"))
 
         self._ports_timer = QTimer(self)
         self._ports_timer.timeout.connect(self.refresh_ports)
@@ -466,7 +468,7 @@ class MainWindow(QMainWindow):
     def set_baseline_present(self) -> None:
         self.baseline_banner.hide()
 
-    def _write_target(self) -> str:
+    def write_target(self) -> str:
         ident = self.info["ident"]
         return f"{ident['hw']} on {self.port_in_use}, UUID {ident['uuid']}"
 
@@ -490,7 +492,7 @@ class MainWindow(QMainWindow):
                 return
             lay = self.layout
             rows = [(k, *config.show_pair(lay, MC_ROOT, k, a, b)) for k, (a, b) in sorted(plan.diff.items())]
-            if not self.prompts.confirm_write(rows, plan.warnings, self._write_target()):
+            if not self.prompts.confirm_write(rows, plan.warnings, self.write_target()):
                 self.log("Cancelled. Nothing was written.")
                 return
             if not board.submit(lambda prog: prog.commit(plan), wrote, failed, exclusive=True):

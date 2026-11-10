@@ -228,6 +228,20 @@ def load_backup(path) -> dict:
     return doc
 
 
+NATIVE_RISK = ("If a native library crashes at start-up, the board can reboot over and over, and only the HALL2-SWCLK "
+               "jumper or an SWD programmer recovers it (see SAFETY.md).")  # fmt: skip
+
+
+def check_restore(doc: dict, ident: dict) -> int:
+    """Refuse a backup from another board or an empty one. Returns how many imported files it holds."""
+    if (doc["uuid"], doc["hw"], doc["fw"]) != (ident["uuid"], ident["hw"], ident["fw"]):
+        raise SafetyRefusal(f"this backup is from {doc['hw']} firmware {doc['fw']}, UUID {doc['uuid']}; the board is "
+                            f"{ident['hw']} firmware {ident['fw']}, UUID {ident['uuid']}.")  # fmt: skip
+    if doc["empty"] or not doc["content"]:
+        raise SafetyRefusal("this backup holds no script, so there is nothing to restore.")
+    return import_count(doc["content"])
+
+
 def list_backups(backup_dir, uuid: str) -> list[Path]:
     folder = backup_folder(backup_dir, uuid)
     return sorted(folder.glob("*.json")) if folder.is_dir() else []
