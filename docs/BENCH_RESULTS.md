@@ -101,3 +101,15 @@ as expected; no timings were sent back.
 
 Not tested yet: the rescue against a library that really crashes (it waits for a hardware fallback: an ST-Link, or
 the HALL2 jumper with a config backup), and a reset with the engine running, where the guard must not wait.
+
+## 2026-11-10: storing with libraries built from C source (`sky code store --build`)
+
+Same board and firmware, `sky` from `stage-1` after PR #14, Arm GNU Toolchain 13.3.rel1. Engine stopped, propeller
+off, RC channel 7 at OFF.
+
+| Check | Result |
+|---|---|
+| Build `hall-capture` from `code.c` in a temporary copy | **Pass.** 2528 bytes, SHA-256 `8ea0a38c…a24aa7d`, byte for byte the committed `.bin` and the library already on the board |
+| Interface files against the board's `fw_info` | **Pass.** Both at `20cbb362` |
+| Warnings | `set_pad_mode` (the library sets up its hall input pin) and the script's own `eeprom-store` calls, as expected |
+| Store `engine_control.lisp` with the guard and the fresh build | **Pass.** 40,461 bytes stored and read back, then started |
