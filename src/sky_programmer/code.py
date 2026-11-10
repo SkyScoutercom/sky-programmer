@@ -199,9 +199,12 @@ def has_guard(text: str) -> bool:
     return text.startswith(GUARD)
 
 
-def pack_script(text: str, folder, *, guard: bool = True) -> tuple[bytes, list[tuple[str, int]]]:
+def pack_script(text: str, folder, *, guard: bool = True, built: dict | None = None
+                ) -> tuple[bytes, list[tuple[str, int]]]:  # fmt: skip
     """The stored content of a script and its imports, as VESC Tool's lispPackImports builds it, and (name, size) of
     each imported file. A script using native libraries gets the start-up guard first.
+
+    built: import path -> bytes freshly built from source, used instead of the file on disk.
 
     Layout: text, NUL, int16 count, then per import its name, NUL, int32 offset, int32 size, then each file plus a NUL,
     4-byte aligned from the start of the content, because a library runs from where it's stored.
@@ -215,6 +218,9 @@ def pack_script(text: str, folder, *, guard: bool = True) -> tuple[bytes, list[t
         if path.startswith(("pkg::", "pkg@")):
             raise SafetyRefusal(f"line {number}: imports from VESC packages aren't supported. Use VESC Tool for this "
                                 "script.")  # fmt: skip
+        if built and path in built:
+            files.append((name, built[path] + b"\0"))
+            continue
         found = next((f for f in (Path(folder) / path, Path(path)) if f.is_file()), None)
         if found is None:
             raise SafetyRefusal(f"line {number}: imported file not found: {Path(folder) / path}")

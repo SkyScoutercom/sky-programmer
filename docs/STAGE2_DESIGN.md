@@ -89,7 +89,12 @@ backup can be restored.
 3. Scripts with native libraries: built with the start-up guard and `sky code rescue`. Bench section I tries the
    rescue on a healthy board; the deliberate-crash test waits for a hardware fallback (an ST-Link, or the HALL2
    jumper with a config backup).
-4. Building C libraries (`make`), with the source checks above.
+4. Building C libraries: `sky code build` and `sky code store --build` (`native.py`). They build in a temporary copy
+   with the VESC rules and the Arm GNU Toolchain 13.3.rel1, refuse `commands_process_packet`, `write_nvm`, `wipe_nvm`,
+   `store_cfg`, `store_backup_data` and `can_send_buffer` in the source, check the ELF needs no relocation (no GOT,
+   `.data` or `.bss`, only `init` global), require the interface files' commit to match the board's `fw_info`, and
+   report whether the committed `.bin` matches the fresh build. The source check reads the text only: it catches
+   mistakes, not intent.
 5. The Scripts page in the desktop app: built for Lisp scripts (`gui/scripts_page.py`), on the same engine; bench section H.
 
 ## Open questions

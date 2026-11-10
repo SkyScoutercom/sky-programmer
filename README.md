@@ -99,6 +99,8 @@ To check an install, run `"SKY programmer.exe" --self-test report.txt`. It uses 
 | `sky code store <file.lisp> [--start]` | Store a script: backs up the old script and the config, erases, writes, reads every byte back |
 | `sky code restore <backup> [--start]` | Store one of this board's script backups again |
 | `sky code rescue --engine-stopped` | Wait for the board to power up, then erase its stored script inside the start-up guard window: breaks a native-library boot loop |
+| `sky code build <file.lisp>` | Build the script's native libraries from their C source and check them: interface files pinned to the firmware, no calls that write flash, an ELF the loader can run, and whether the committed `.bin` matches. Writes nothing |
+| `sky code store <file.lisp> --build` | Store with libraries freshly built from source, after checking their interface files match the board's firmware commit |
 
 ### Uploading a Lisp script
 
