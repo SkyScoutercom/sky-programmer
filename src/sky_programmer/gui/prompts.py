@@ -123,10 +123,14 @@ class Prompts:
                 f"5 s.<br><br>{STARTER_NOTE}")  # fmt: skip
         return self._typed("Store script", body, ENGINE_PROMPT, "Store on board", warnings=warnings)
 
-    def confirm_native(self, imports: int, native_risk: str) -> bool:
-        body = f"This backup includes {imports} imported file(s), such as a native library. {escape(native_risk)}"
-        return self._typed("Restore a native library?", body, "Type YES to restore it anyway:", "Continue",
-                           danger=True)  # fmt: skip
+    def confirm_native(self, imports: int, native_risk: str, *, storing: bool = False, libraries=()) -> bool:
+        what = "This script uses native libraries" if storing else "This backup includes imported files"
+        body = f"{what} ({imports} imported).<br><br>{escape(native_risk)}"
+        if libraries:
+            body += "<br><br>" + "<br>".join(escape(line) for line in libraries)
+        title, prompt = (("Store a native library?", "Type YES to store it:") if storing else
+                         ("Restore a native library?", "Type YES to restore it anyway:"))  # fmt: skip
+        return self._typed(title, body, prompt, "Continue", danger=True)
 
     def ask_script_path(self, start: str) -> str:
         return QFileDialog.getOpenFileName(self.parent, "Choose a Lisp script", start,

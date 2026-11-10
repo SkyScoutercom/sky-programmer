@@ -54,7 +54,7 @@ class FakePrompts:
         self.stores.append((what, size, warnings, target))
         return self.store_answer
 
-    def confirm_native(self, imports, risk):
+    def confirm_native(self, imports, risk, **_):
         self.natives.append(imports)
         return self.native_answer
 

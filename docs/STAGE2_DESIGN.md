@@ -71,7 +71,14 @@ backup can be restored.
   a `stop` function that faults), but the window comes before the load at every boot.
 - An EEPROM boot counter was considered and dropped: every EEPROM write releases the motor for 5 s
   (`conf_general.c`), so clearing the counter while the engine runs isn't safe.
-- Packing matches VESC Tool's `lispPackImports` byte for byte; a test repacks the real board's backup to prove it.
+- Packing matches VESC Tool's `lispPackImports` byte for byte for ASCII import names (non-ASCII names are refused:
+  VESC Tool sizes its table by characters but writes UTF-8). A test repacks the real board's backup to prove it.
+- The guard only waits while `(get-rpm)` is under 200 erpm: after a reset with the engine running, the engine script
+  must take over again within about a second. BLDC tracks a released, spinning motor's rpm (`mcpwm.c`, back-EMF in
+  `MC_STATE_OFF`), and the rescue refuses a turning motor anyway.
+- A native library is unchecked machine code: it can call `commands_process_packet`, `wipe_nvm` and `write_nvm`
+  (`vesc_c_if.h`). So `load-native-lib` may only name one of the script's imports directly, never an array built at
+  run time, and each library is shown with its SHA-256 before the second YES.
 - A library's source should be checked for `write_nvm`, `wipe_nvm` and `store_cfg`: `wipe_nvm` erases the bootloader
   sector.
 

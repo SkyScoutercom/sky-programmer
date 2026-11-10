@@ -109,8 +109,10 @@ every power-up. A store that fails part-way leaves the board with no script: it 
 
 Scripts that `import` files, such as native libraries, can be stored but not tried, and storing them asks a second
 YES. The files are packed exactly as VESC Tool packs them. A native library that crashes when it loads makes the board
-reboot over and over, so `sky code store` puts a start-up guard at the top of such a script: it waits 10 s after each
-power-up before anything loads. If a library ever boot-loops the board, run `sky code rescue --engine-stopped` and
+reboot over and over, so `sky code store` puts a start-up guard at the top of such a script: at a power-up with the
+motor still it waits 10 s before anything loads (after a reset with the engine running, it doesn't wait). A native
+library is machine code with full access to the board, so store only libraries you built or trust: each one is listed
+with its SHA-256. If a library ever boot-loops the board, run `sky code rescue --engine-stopped` and
 power-cycle: it erases the script inside that window, and the board starts with none (see [SAFETY.md](SAFETY.md); not
 yet tried with a crashing library). The design and the firmware facts behind it are in
 [docs/STAGE2_DESIGN.md](docs/STAGE2_DESIGN.md).

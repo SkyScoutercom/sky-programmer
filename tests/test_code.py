@@ -634,3 +634,63 @@ def test_cli_rescue(board, tmp_path, capsys, monkeypatch):
     assert fake.code_erases == 0
     assert cli.main([*argv, "--engine-stopped"], serial_factory=lambda _p: fake, ports=lambda: ["fake"]) == 0
     assert "Erased" in capsys.readouterr().out and fake.stored_content() is None
+
+
+# ---------------------------------------------------------------------- review findings on native libraries
+def test_the_guard_only_waits_with_the_motor_still():
+    assert f"(if (< (abs (get-rpm)) {code.GUARD_IDLE_ERPM}) (sleep {code.GUARD_SECONDS}))" in code.GUARD
+    assert code.symbols(code.GUARD) == ["if", "<", "abs", "get-rpm", str(code.GUARD_IDLE_ERPM), "sleep",
+                                        str(code.GUARD_SECONDS)]  # fmt: skip
+
+
+def test_an_edited_guard_is_refused_not_trusted(tmp_path):
+    folder = _native_folder(tmp_path)
+    edited = code.GUARD.replace(f"(sleep {code.GUARD_SECONDS})", "(sleep 0)") + NATIVE_SCRIPT
+    assert not code.has_guard(edited)
+    with pytest.raises(SafetyRefusal, match="guard"):
+        code.check_script(edited, native=True)
+    assert code.has_guard(code.script_text(code.pack_script(NATIVE_SCRIPT, folder)[0]))
+
+
+@pytest.mark.parametrize("call", [
+    "(load-native-lib (bufcreate 64))", "(load-native-lib other)", "(load-native-lib)", "(apply load-native-lib x)",
+    "(unload-native-lib nope)",
+])  # fmt: skip
+def test_load_native_lib_must_name_an_import(call):
+    with pytest.raises(SafetyRefusal, match="must name one of this script's imports"):
+        code.check_script(f'(import "a.bin" \'liba)\n{call}\n', native=True)
+
+
+def test_naming_an_import_is_fine_and_names_must_be_ascii():
+    assert code.check_script('(import "a.bin" \'liba)\n(load-native-lib liba)\n(unload-native-lib liba)',
+                             native=True) == []  # fmt: skip
+    with pytest.raises(SafetyRefusal, match="ASCII"):
+        code.check_script('(import "a.bin" \'libä)\n(load-native-lib libä)', native=True)
+
+
+def test_library_lines_name_the_exact_build():
+    import hashlib
+
+    data = b"\x01\x02"
+    line, = code.library_lines([("liba", data)])
+    assert line == f"liba: 2 bytes, SHA-256 {hashlib.sha256(data).hexdigest()}"
+
+
+def test_rescue_only_erases_the_named_board(board, tmp_path):
+    from sky_programmer.link import Link
+
+    fake, _ = board()
+    with pytest.raises(SafetyRefusal, match="not 00"):
+        code.rescue(lambda _p: Link(fake, clock=fake.clock, sleep=fake.clock.sleep), lambda: ["/dev/ttyACM0"],
+                    tmp_path, uuid="00" * 12, wait_s=5, clock=fake.clock, sleep=fake.clock.sleep,
+                    say=lambda *_: None)  # fmt: skip
+    assert fake.code_erases == 0
+
+
+def test_rescue_backs_up_what_it_erases(board, tmp_path):
+    fake, _ = board()
+    before = fake.stored_content()
+    _rescue(fake, backup_dir=tmp_path)
+    saved = [code.load_backup(p) for p in code.list_backups(tmp_path, fake.uuid.hex())]
+    assert [d["reason"] for d in saved] == ["pre-rescue"] and saved[0]["content"] == before
+    assert fake.stored_content() is None

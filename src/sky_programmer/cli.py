@@ -273,7 +273,10 @@ def cmd_code_store(prog, args) -> int:
     content, files = code.pack_script(text, Path(args.file).parent)
     if code.uses_native(text):
         names = ", ".join(f"{name} ({size} bytes)" for name, size in files) or "none imported"
-        print(f"Native libraries: {names}. {code.NATIVE_RISK}")
+        print(f"Native libraries: {names}.")
+        for line in code.library_lines(code.unpack_imports(content)):
+            print(f"  {line}")
+        print(code.NATIVE_RISK)
         print(code.GUARD_NOTE)
         if not args.native_ok and not _ask_yes("Type YES to store a script with native libraries: "):
             raise SafetyRefusal("cancelled. Nothing was written.")
@@ -304,7 +307,8 @@ def cmd_code_rescue(args, serial_factory, ports) -> int:
         return ([args.port] if args.port in ports() or os.path.exists(args.port) else []) if args.port else ports()
 
     print(f"Waiting up to {args.wait:g} s. A boot-looping board is caught at its next power-up.")
-    res = code.rescue(lambda port: Link(serial_factory(port)), find_ports, args.backup_dir, wait_s=args.wait)
+    res = code.rescue(lambda port: Link(serial_factory(port)), find_ports, args.backup_dir, uuid=args.uuid,
+                      wait_s=args.wait)  # fmt: skip
     print(f"Erased. {res['hw']}, UUID {res['uuid']}, now starts with no script. Fix the library, then store the "
           "script again.")  # fmt: skip
     return 0
@@ -416,6 +420,7 @@ def build_parser() -> argparse.ArgumentParser:
     csp = add_code("rescue", cmd_code_rescue, "erase the stored script as the board powers up, to break a boot loop")
     csp.add_argument("--engine-stopped", action="store_true", help="state the engine is stopped; skips the prompt")
     csp.add_argument("--wait", type=float, default=code.RESCUE_WAIT_S, help="seconds to wait for the board")
+    csp.add_argument("--uuid", help="only erase the board with this UUID (see `sky status`)")
     csp.set_defaults(no_link=True)
     sp = add("repl", cmd_repl, "LispBM console")
     sp.add_argument("-e", "--expr", help="evaluate one expression and exit")

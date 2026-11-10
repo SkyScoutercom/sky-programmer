@@ -128,7 +128,7 @@ No crashing library here: this checks the guard and the rescue with the working 
 |---|---|---|
 | 51 | `sky code backup` | Keep the path: the script on the board now |
 | 52 | `sky code store engine_control.lisp`, YES to the native-library question, YES to the engine question, no to starting | "Native libraries: hall-capture (2528 bytes)", then "Stored and read back". The stored script starts with the guard |
-| 53 | Power-cycle, then `sky monitor --seconds 25` | No script messages for about 10 s after the board answers, then the engine script's own messages. Send back roughly how long the quiet part was |
+| 53 | Power-cycle with the motor still, then `sky monitor --seconds 25` | No script messages for about 10 s after the board answers, then the engine script's own messages. Send back roughly how long the quiet part was |
 | 54 | `sky code rescue --engine-stopped`, then power-cycle the board while it waits | "Found …", then "Erased" within a few seconds of the board appearing |
 | 55 | `sky code backup`, then power-cycle and `sky monitor --seconds 15` | No valid script is stored, and no script messages appear |
 | 56 | Step 52 again, answering YES to starting it. Wait 10 s | The engine script is back and running |

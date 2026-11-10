@@ -76,11 +76,16 @@ HW_TYPE_VESC = 0  # the code area layout here is only known for STM32 VESC board
 # erase among them, while the script sleeps (comm_usb.c). So waiting first leaves a window at every power-up in which
 # `sky code rescue` can erase the script. USB comes up about 0.5 s before the script starts; 10 s covers the laptop
 # re-detecting the board.
+# It only waits while the motor is still. A reset with the engine running (a brown-out, EMI) must give the engine script
+# back within about a second, as before: it regulates throttle and cuts overvoltage and overspeed. BLDC tracks the rpm
+# of a released, spinning motor (mcpwm.c, back-EMF in MC_STATE_OFF), and the rescue refuses a turning motor anyway.
 GUARD_SECONDS = 10
+GUARD_IDLE_ERPM = 200  # programmer.IDLE_MAX_ERPM: a hand-turned engine reads 12 at most, a running one far more
 GUARD_MARK = ";; SKY programmer start-up guard"
-GUARD = (f"{GUARD_MARK}, added automatically: wait {GUARD_SECONDS} s after power-up before any native library\n"
-         ";; loads, so `sky code rescue` can erase this script if a library keeps crashing the board.\n"
-         f"(sleep {GUARD_SECONDS})\n")  # fmt: skip
+GUARD = (f"{GUARD_MARK}, added automatically: with the motor still, wait {GUARD_SECONDS} s after power-up\n"
+         ";; before any native library loads, so `sky code rescue` can erase this script if a library keeps crashing\n"
+         ";; the board. With the motor turning, as after a reset in flight, it doesn't wait.\n"
+         f"(if (< (abs (get-rpm)) {GUARD_IDLE_ERPM}) (sleep {GUARD_SECONDS}))\n")  # fmt: skip
 STREAM_DONE = "Stream done, starting..."  # lispif.c prints this only when the whole script arrived and starts
 
 
@@ -132,7 +137,29 @@ def check_script(text: str, *, native: bool = False) -> list[str]:
     if refused:
         raise SafetyRefusal("this script can't be uploaded: " + "; ".join(f"`{w}`: {FORBIDDEN_WORDS[w]}"
                                                                           for w in refused) + ".")  # fmt: skip
+    if native:
+        _check_native_use(text)
     return [f"`{w}`: {WARNING_WORDS[w]}." for w in sorted(found & set(WARNING_WORDS))]
+
+
+def _check_native_use(text: str) -> None:
+    """A library may only be one of the script's imported files, named directly. `load-native-lib` runs any array,
+    one built in RAM too (lispif_c_lib.c), so `(load-native-lib (bufcreate ...))` would run code nobody stored."""
+    if text.startswith(GUARD_MARK) and not text.startswith(GUARD):
+        raise SafetyRefusal("the start-up guard at the top of this script was changed. Delete those lines; storing "
+                            "adds the guard again.")  # fmt: skip
+    names = set()
+    for number, _, name in find_imports(text):
+        if not name.isascii():  # VESC Tool sizes its table by characters, so it would pack these at wrong offsets
+            raise SafetyRefusal(f"line {number}: import names must be plain ASCII, not `{name}`.")
+        names.add(name.lower())
+    words = symbols(text)
+    for i, word in enumerate(words):
+        if word in ("load-native-lib", "unload-native-lib"):
+            arg = words[i + 1] if i + 1 < len(words) else ""
+            if arg not in names:
+                raise SafetyRefusal(f"`{word}` must name one of this script's imports directly, as in "
+                                    f"`({word} name)`; it's given `{arg or 'nothing'}`.")  # fmt: skip
 
 
 def pack(text: str) -> bytes:
@@ -168,7 +195,8 @@ def uses_native(text: str) -> bool:
 
 
 def has_guard(text: str) -> bool:
-    return text.startswith(GUARD_MARK)
+    """Exactly this tool's guard, unchanged: a marker with an edited guard below it guards nothing."""
+    return text.startswith(GUARD)
 
 
 def pack_script(text: str, folder, *, guard: bool = True) -> tuple[bytes, list[tuple[str, int]]]:
@@ -327,12 +355,19 @@ def load_backup(path) -> dict:
     return doc
 
 
-NATIVE_RISK = ("If a native library crashes when it loads, the board resets and loads it again, over and over. Without "
-               "the start-up guard, only the HALL2-SWCLK jumper, which also resets the config to defaults, or an SWD "
-               "programmer recovers it (see SAFETY.md).")  # fmt: skip
-GUARD_NOTE = (f"Scripts stored with the SKY programmer get a start-up guard: they wait {GUARD_SECONDS} s after each "
-              "power-up before loading a library, and `sky code rescue` can erase the script in that "
-              "window.")  # fmt: skip
+NATIVE_RISK = ("A native library is machine code with full access to the board: none of this tool's checks apply to "
+               "it, and it can do anything the firmware can, erasing the firmware or bootloader included. Store only "
+               "libraries you built or trust. If one crashes when it loads, the board resets and loads it again, "
+               "over and over. Without the start-up guard, only the HALL2-SWCLK jumper, which also resets the config "
+               "to defaults, or an SWD programmer recovers it (see SAFETY.md).")  # fmt: skip
+GUARD_NOTE = (f"Scripts stored with the SKY programmer get a start-up guard: at a power-up with the motor still, they "
+              f"wait {GUARD_SECONDS} s before loading a library, and `sky code rescue` can erase the script in that "
+              "window. After a reset with the motor turning, they don't wait.")  # fmt: skip
+
+
+def library_lines(files) -> list[str]:
+    """One line per imported file, with its SHA-256, so the operator can tell exactly which build is stored."""
+    return [f"{name}: {len(data)} bytes, SHA-256 {hashlib.sha256(data).hexdigest()}" for name, data in files]
 
 
 def check_restore(doc: dict, ident: dict) -> int:
@@ -469,8 +504,8 @@ RESCUE_WAIT_S = 120.0
 RESCUE_SETTLE_S = 2.0
 
 
-def rescue(open_link, find_ports, backup_dir, *, wait_s: float = RESCUE_WAIT_S, clock=time.monotonic,
-           sleep=time.sleep, say=print) -> dict:  # fmt: skip
+def rescue(open_link, find_ports, backup_dir, *, uuid: str | None = None, wait_s: float = RESCUE_WAIT_S,
+           clock=time.monotonic, sleep=time.sleep, say=print) -> dict:  # fmt: skip
     """Wait for the board to appear, then erase its stored script, so its next boot runs none.
 
     For a board boot-looping on a native library: the erase stops the script first (commands.c, lispif_stop), and the
@@ -495,11 +530,18 @@ def rescue(open_link, find_ports, backup_dir, *, wait_s: float = RESCUE_WAIT_S, 
         try:
             prog = Programmer(link, backup_dir, say=lambda *_: None)
             ident = prog.identify()
+            if uuid and ident["uuid"] != uuid.lower():
+                raise SafetyRefusal(f"the board on {ports[0]} is UUID {ident['uuid']}, not {uuid}. Nothing was erased.")
             require_vesc_hardware(prog)
             prog.require_idle(prog.read_conf(MC_ROOT))
             say(f"Found {ident['hw']}, UUID {ident['uuid']}, on {ports[0]}. Erasing its script in "
                 f"{RESCUE_SETTLE_S:g} s.")  # fmt: skip
-            sleep(RESCUE_SETTLE_S)
+            t0 = clock()
+            try:  # the settle time is spent saving what's about to be erased, if the disk allows
+                say(f"Backed up its script first: {save_backup(prog, read_code(prog), 'pre-rescue')}")
+            except SafetyRefusal as e:
+                say(f"Couldn't back up its script ({e}). Erasing anyway.")
+            sleep(max(0.0, RESCUE_SETTLE_S - (clock() - t0)))
             reply = link.request(bytes([p.COMM_LISP_ERASE_CODE]) + struct.pack(">i", CODE_AREA_BYTES),
                                  timeout=ERASE_TIMEOUT_S, code_write=True)  # fmt: skip
             if len(reply) < 2 or reply[1] != 1:

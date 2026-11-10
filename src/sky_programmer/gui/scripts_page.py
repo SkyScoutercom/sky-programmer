@@ -193,8 +193,9 @@ class ScriptsPage(QWidget):
         except SafetyRefusal as e:
             self.win.report(e)
             return
+        libraries = code.library_lines(code.unpack_imports(content))
         if code.uses_native(text) and not self.win.prompts.confirm_native(
-                len(files), f"{code.NATIVE_RISK} {code.GUARD_NOTE}"):  # fmt: skip
+                len(files), f"{code.NATIVE_RISK} {code.GUARD_NOTE}", storing=True, libraries=libraries):  # fmt: skip
             self.win.log("Cancelled. Nothing was written.")
             return
         self._store(content, path.name, warnings)
@@ -212,7 +213,8 @@ class ScriptsPage(QWidget):
         if not code.has_guard(code.script_text(doc["content"])):
             risk += (" This backup has no start-up guard, so `sky code rescue` can't help if its library crashes. "
                      "Storing the script from its file adds one.")  # fmt: skip
-        if imports and not self.win.prompts.confirm_native(imports, risk):
+        libraries = code.library_lines(code.unpack_imports(doc["content"]))
+        if imports and not self.win.prompts.confirm_native(imports, risk, libraries=libraries):
             self.win.log("Cancelled. Nothing was written.")
             return
         self._store(doc["content"], f"the script backup from {doc['created'][:19].replace('T', ' ')}", [])
