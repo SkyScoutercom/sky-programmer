@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import APP_NAME, __version__, backup, code, config
+from . import APP_NAME, __version__, backup, code, config, native
 from .config import APP_ROOT, MC_ROOT
 from .errors import SafetyRefusal, SkyError
 from .link import Link, find_port, list_ports, open_serial
@@ -266,11 +266,58 @@ def cmd_code_try(prog, args) -> int:
     return 0
 
 
+def _print_builds(builds) -> dict:
+    """Report each import's build. Returns {import path: freshly built bytes}."""
+    fresh = {}
+    for path, name, result in builds:
+        if result is None:
+            print(f"{name}: {path} has no source and Makefile next to it, so there's nothing to build.")
+            continue
+        fresh[path] = result.data
+        commit = result.commit[:8] if result.commit else "an unknown commit"
+        print(f"{name}: built from source, {len(result.data)} bytes, SHA-256 {result.sha256}, gcc {result.version}, "
+              f"interface files at {commit}.")  # fmt: skip
+        if result.matches_committed is False:
+            print(f"  The committed {path} differs from this build of its source.")
+        elif result.matches_committed:
+            print(f"  The committed {path} matches this build byte for byte.")
+        for warning in result.warnings:
+            print(f"  Warning: {warning}")
+    return fresh
+
+
+def cmd_code_build(args, serial_factory, ports) -> int:
+    """Build and check a script's native libraries. Needs no board."""
+    text = _read_script(args.file)
+    code.check_script(text, native=True)
+    print("Building runs each library's own Makefile, in a temporary copy: only build projects you trust.")
+    builds = native.build_imports(text, Path(args.file).parent)
+    if not builds:
+        print("This script imports nothing, so there's nothing to build.")
+        return 0
+    _print_builds(builds)
+    print("Nothing was sent to a board. The interface files weren't compared with a board's firmware: "
+          "`sky code store --build` does that before storing.")  # fmt: skip
+    return 0
+
+
 def cmd_code_store(prog, args) -> int:
     text = _read_script(args.file)
     for warning in code.check_script(text, native=True):
         print(f"Warning: {warning}")
-    content, files = code.pack_script(text, Path(args.file).parent)
+    built = None
+    if args.build:
+        print("Building runs each library's own Makefile, in a temporary copy: only build projects you trust.")
+        builds = native.build_imports(text, Path(args.file).parent)
+        built = _print_builds(builds)
+        prebuilt = [path for path, _, result in builds if result is None]
+        if prebuilt:
+            raise SafetyRefusal(f"--build was asked for, but {', '.join(prebuilt)} has no source to build from. Store "
+                                "without --build to use the file as it is.")  # fmt: skip
+        firmware = native.board_commit(prog)
+        for _, _, result in builds:
+            native.require_matching_interface(result.commit, firmware)
+    content, files = code.pack_script(text, Path(args.file).parent, built=built)
     if code.uses_native(text):
         names = ", ".join(f"{name} ({size} bytes)" for name, size in files) or "none imported"
         print(f"Native libraries: {names}.")
@@ -417,6 +464,12 @@ def build_parser() -> argparse.ArgumentParser:
         csp.add_argument("--start", action="store_true", help="start the stored script afterwards without asking")
         csp.add_argument("--native-ok", action="store_true",
                          help="store a script or backup with native libraries without asking")  # fmt: skip
+        if name == "store":
+            csp.add_argument("--build", action="store_true",
+                             help="build its native libraries from source first and store those builds")  # fmt: skip
+    csp = add_code("build", cmd_code_build, "build and check a script's native libraries from source; writes nothing")
+    csp.add_argument("file")
+    csp.set_defaults(no_link=True)
     csp = add_code("rescue", cmd_code_rescue, "erase the stored script as the board powers up, to break a boot loop")
     csp.add_argument("--engine-stopped", action="store_true", help="state the engine is stopped; skips the prompt")
     csp.add_argument("--wait", type=float, default=code.RESCUE_WAIT_S, help="seconds to wait for the board")
