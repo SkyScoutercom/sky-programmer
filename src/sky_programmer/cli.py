@@ -275,17 +275,9 @@ def cmd_code_store(prog, args) -> int:
 
 def cmd_code_restore(prog, args) -> int:
     doc = code.load_backup(args.file)
-    ident = prog.identify()
-    if (doc["uuid"], doc["hw"], doc["fw"]) != (ident["uuid"], ident["hw"], ident["fw"]):
-        raise SafetyRefusal(f"this backup is from {doc['hw']} firmware {doc['fw']}, UUID {doc['uuid']}; the board is "
-                            f"{ident['hw']} firmware {ident['fw']}, UUID {ident['uuid']}.")  # fmt: skip
-    if doc["empty"] or not doc["content"]:
-        raise SafetyRefusal("this backup holds no script, so there is nothing to restore.")
-    imports = code.import_count(doc["content"])
+    imports = code.check_restore(doc, prog.identify())
     if imports:
-        print(f"This backup includes {imports} imported files, such as a native library. If a native library crashes "
-              "at start-up, the board can reboot over and over, and only the HALL2-SWCLK jumper or an SWD programmer "
-              "recovers it (see SAFETY.md).")  # fmt: skip
+        print(f"This backup includes {imports} imported files, such as a native library. {code.NATIVE_RISK}")
         if not args.native_ok and not _ask_yes("Type YES to restore it anyway: "):
             raise SafetyRefusal("cancelled. Nothing was written.")
     return _store_and_maybe_start(prog, args, doc["content"], f"the backup from {doc['created']}")

@@ -24,11 +24,12 @@ from sky_programmer.gui.app import install_launcher  # noqa: E402
 from sky_programmer.gui.config_page import NOTE, VALUE, NoWheelCombo  # noqa: E402
 from sky_programmer.gui.demo import DemoBoard  # noqa: E402
 from sky_programmer.gui.prompts import TypedConfirm  # noqa: E402
-from sky_programmer.gui.window import MainWindow  # noqa: E402
+from sky_programmer.gui.window import NAV, MainWindow  # noqa: E402
 from sky_programmer.gui.wording import NO_OVERRIDE, humanize  # noqa: E402
 from sky_programmer.link import Link  # noqa: E402
 from sky_programmer.simulator import FakeVesc  # noqa: E402
 
+UPDATES_ROW = NAV.index("Updates")
 READ_ONLY = {p.COMM_FW_VERSION, p.COMM_GET_VALUES, p.COMM_GET_MCCONF, p.COMM_GET_APPCONF}
 
 
@@ -42,6 +43,23 @@ class FakePrompts:
         self.pause_answer, self.baseline_answer, self.reset_answer = True, True, True
         self.baseline_requests, self.resets = [], []
         self.power_cycled_answer = True
+        self.try_answer, self.store_answer, self.native_answer = True, True, True
+        self.tries, self.stores, self.natives = [], [], []
+
+    def confirm_try(self, name, size, warnings):
+        self.tries.append((name, size, warnings))
+        return self.try_answer
+
+    def confirm_store(self, what, size, warnings, target):
+        self.stores.append((what, size, warnings, target))
+        return self.store_answer
+
+    def confirm_native(self, imports, risk):
+        self.natives.append(imports)
+        return self.native_answer
+
+    def ask_script_path(self, start):
+        return getattr(self, "script_path", "")
 
     def confirm_write(self, rows, warnings, target=""):
         self.write_requests.append((rows, warnings))
@@ -1259,9 +1277,9 @@ def _updates(win, folder):
 
 def test_updates_is_open_with_no_board_and_board_pages_are_not(gui):
     win, _, _ = gui(connect=False)
-    assert win.nav.item(4).flags() & Qt.ItemFlag.ItemIsEnabled
+    assert win.nav.item(UPDATES_ROW).flags() & Qt.ItemFlag.ItemIsEnabled
     assert not win.nav.item(0).flags() & Qt.ItemFlag.ItemIsEnabled
-    win.nav.setCurrentRow(4)
+    win.nav.setCurrentRow(UPDATES_ROW)
     assert win.stack.currentWidget() is win.updates_page
 
 
@@ -1572,7 +1590,7 @@ def test_a_packaged_app_has_no_updates_page(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     win = MainWindow(ports=lambda: [], backup_dir=tmp_path, prompts=FakePrompts(),
                      settings_path=tmp_path / "settings.ini")  # fmt: skip
-    assert win.nav.item(4).isHidden()
+    assert win.nav.item(UPDATES_ROW).isHidden()
     assert win.updates_page.repo is None
     win.close()
 
@@ -1581,7 +1599,7 @@ def test_a_normal_install_keeps_the_updates_page(tmp_path):
     QApplication.instance() or QApplication([])
     win = MainWindow(ports=lambda: [], backup_dir=tmp_path, prompts=FakePrompts(),
                      settings_path=tmp_path / "settings.ini", repo_dir=tmp_path / "no-repo")  # fmt: skip
-    assert not win.nav.item(4).isHidden()
+    assert not win.nav.item(UPDATES_ROW).isHidden()
     win.close()
 
 
@@ -1693,3 +1711,125 @@ def test_the_motor_turning_switch_is_reset_when_the_simulated_board_disconnects(
     win.disconnect_board()
     wait_until(lambda: win.board is None)
     assert not win.turning_box.isChecked()
+
+
+# ---------------------------------------------------------------------- the Scripts page
+SCRIPT_TEXT = '(print "hello from the scripts page")\n'
+
+
+def _script_file(tmp_path, text=SCRIPT_TEXT, name="new.lisp"):
+    path = tmp_path / name
+    path.write_text(text)
+    return str(path)
+
+
+def test_scripts_page_stores_reads_back_and_offers_to_start(gui, tmp_path):
+    from sky_programmer import code
+
+    win, fake, prompts = gui()
+    prompts.script_path = _script_file(tmp_path)
+    win.scripts_page.store_file()
+    settle(win)
+    assert fake.stored_content() == code.pack(SCRIPT_TEXT)
+    assert len(prompts.stores) == 1 and "UUID" in prompts.stores[0][3]
+    assert fake.code_erases == 1 and prompts.starts == 1 and fake.script_running
+    assert any(title == "Script stored" and "all" in text for title, text in prompts.infos)
+    assert win.scripts_page.table.rowCount() == 1  # the old script's backup
+    assert any("pre-code" in str(path) for path in win.backups_page.paths)
+
+
+def test_scripts_page_cancelling_the_store_writes_nothing(gui, tmp_path):
+    win, fake, prompts = gui()
+    prompts.script_path, prompts.store_answer = _script_file(tmp_path), False
+    win.scripts_page.store_file()
+    settle(win)
+    assert fake.code_erases == 0 and fake.code_writes == [] and prompts.starts == 0
+
+
+def test_scripts_page_refuses_a_forbidden_script_before_asking(gui, tmp_path):
+    win, fake, prompts = gui()
+    prompts.script_path = _script_file(tmp_path, "(image-save)")
+    win.scripts_page.store_file()
+    settle(win)
+    assert prompts.stores == [] and fake.code_erases == 0
+    assert prompts.errors and prompts.errors[-1][0] == "Refused" and "image-save" in prompts.errors[-1][1]
+
+
+def test_scripts_page_refuses_while_the_motor_turns(gui, tmp_path):
+    win, fake, prompts = gui()
+    fake.erpm = 3000
+    prompts.script_path = _script_file(tmp_path)
+    win.scripts_page.store_file()
+    settle(win)
+    assert prompts.stores == [] and fake.code_erases == 0 and prompts.errors[-1][0] == "Refused"
+
+
+def test_scripts_page_try_runs_from_ram_and_stores_nothing(gui, tmp_path):
+    from sky_programmer import code
+    from sky_programmer.simulator import STORED_SCRIPT
+
+    win, fake, prompts = gui()
+    prompts.script_path = _script_file(tmp_path)
+    win.scripts_page.try_file()
+    settle(win)
+    assert len(prompts.tries) == 1 and fake.stream_starts == 1 and bytes(fake.streamed) == SCRIPT_TEXT.encode()
+    assert fake.code_erases == 0 and fake.stored_content() == code.pack(STORED_SCRIPT)
+    assert prompts.infos[-1][0] == "Script running"
+
+
+def test_scripts_page_backup_then_restore_puts_the_old_script_back(gui, tmp_path):
+    from sky_programmer import code
+    from sky_programmer.simulator import STORED_SCRIPT
+
+    win, fake, prompts = gui()
+    page = win.scripts_page
+    page.backup_now()
+    settle(win)
+    assert page.table.rowCount() == 1 and prompts.infos[-1][0] == "Script backed up"
+    prompts.script_path = _script_file(tmp_path)
+    page.store_file()
+    settle(win)
+    assert fake.stored_content() == code.pack(SCRIPT_TEXT)
+    row = next(i for i, path in enumerate(page.paths) if "manual" in path.name)
+    page.table.selectRow(row)
+    assert page.restore_button.isEnabled()
+    page.restore()
+    settle(win)
+    assert fake.stored_content() == code.pack(STORED_SCRIPT) and prompts.natives == []
+
+
+def test_scripts_page_restoring_a_native_library_needs_a_second_yes(gui, tmp_path):
+    import struct
+
+    from sky_programmer import code
+
+    win, fake, prompts = gui()
+    content = SCRIPT_TEXT.encode() + b"\0" + struct.pack(">h", 1) + b"lib\0" + struct.pack(">ii", 32, 4) + b"\0" * 4
+    img = code.image(content)
+    fake.code_area[:len(img)] = img
+    page = win.scripts_page
+    page.backup_now()
+    settle(win)
+    page.table.selectRow(0)
+    prompts.native_answer = False
+    page.restore()
+    settle(win)
+    assert prompts.natives == [1] and prompts.stores == [] and fake.code_erases == 0
+
+
+def test_scripts_page_a_failed_write_is_reported_and_not_retried(gui, tmp_path):
+    from sky_programmer import code
+
+    win, fake, prompts = gui(code_write_fails_at=0)
+    prompts.script_path = _script_file(tmp_path)
+    win.scripts_page.store_file()
+    settle(win)
+    assert fake.code_writes == [0] and prompts.starts == 0
+    assert prompts.errors[-1][0] == "The write did not verify" and "sky code restore" in prompts.errors[-1][1]
+    assert fake.stored_content() is None and code.list_backups(win.backup_dir, fake.uuid.hex())
+
+
+def test_scripts_page_is_off_for_unsupported_firmware(gui):
+    win, _, _ = gui(fw=(6, 6))
+    page = win.scripts_page
+    assert not any(b.isEnabled() for b in (page.backup_button, page.try_button, page.store_button))

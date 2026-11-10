@@ -36,6 +36,7 @@ sky-gui                                    # the real thing
 | Dashboard | Live values and charts, CSV recording, pause and start the script |
 | Configuration | Browse and search motor config, edit, review and write. App config is read only |
 | Backups | Back up, compare with the board, restore |
+| Scripts | Back up the stored Lisp script, try a file from RAM, store a file, restore a script backup: the same checks as `sky code` |
 | Console | Board messages, read-only terminal commands, the filtered REPL |
 | Updates | Status, pull and reset for this source folder, as on the SKY kiosk. Works with no board connected |
 
@@ -145,9 +146,9 @@ hang a board at boot are refused with no override.
 
 ## Roadmap
 
-1. **Done, pending bench test:** status, monitor, get/set, backup/restore, REPL, in the terminal and the desktop app.
-2. **Script upload:** Lisp scripts done in the terminal, pending bench test. Next: native libraries, which firmware
-   7.00 can't run from RAM first, then building C libraries, then a Scripts page in the desktop app.
+1. **Done, bench-tested on one board:** status, monitor, get/set, backup/restore, REPL, in the terminal and the desktop app.
+2. **Script upload:** Lisp scripts done and bench-tested in the terminal, and on the desktop app's Scripts page (same engine,
+   not yet run on hardware). Next: native libraries, which firmware 7.00 can't run from RAM first, then building C libraries.
 3. **Independent of VESC Tool:** own uploader and motor detection.
 4. **Firmware flashing:** last, and only with the checks listed in SAFETY.md.
 

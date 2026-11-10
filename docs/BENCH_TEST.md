@@ -106,6 +106,18 @@ TAKEOFF only on purpose, while the servo test is running.
 | 45 | Power-cycle, reconnect | The board connects normally, and no script runs |
 | 46 | `sky code restore <path from step 36>`, type YES, answer YES to start | The original script is back and running |
 
+## H. The Scripts page in the desktop app
+
+The same engine as section G, so this only checks the page. Same precautions: engine stopped, propeller off, **RC
+channel 7 at OFF** before every store, restore, start and power-cycle.
+
+| # | Action | Expect |
+|---|---|---|
+| 47 | Scripts page: **Back up stored script** | A dialog with the size and imported files, and a new row in the list |
+| 48 | **Try a file…**, pick `servo_74_test.lisp`, type YES | "Script running". The servo test's messages appear in the Console |
+| 49 | **Store a file…**, pick `servo_74_test.lisp`, type YES, then cancel the start question | "Script stored": all bytes match. The paused banner shows, and the new script isn't running |
+| 50 | Select the step 47 backup, **Restore…**, answer the native-library question, type YES, then start it | The engine script is back and running. Send back each dialog's wording that was unclear |
+
 Please send back any step that didn't match, with its output. Steps 6, 7, 11, 13, 15 and 17 test assumptions the
 simulated board can't confirm.
 
