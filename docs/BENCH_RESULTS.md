@@ -72,3 +72,14 @@ library (40,145 bytes), stored by VESC Tool. Run with `sky` from the branch, eng
 | A cable pulled before the erase reported only "USB read failed" | Nothing had been written, but the message didn't say so. It now says the stored script is unchanged |
 | The erase takes a few seconds | A pull 3 s after YES still landed during the erase. It finished on the board, inside the 12 s the tool waits |
 | `sky status` read -13 A at 0 erpm right after a power-up | One sample, then 0.05 to 0.08 A: the same start-up reading as in the 2026-11-07 run |
+
+## 2026-11-10: section H, the desktop app's Scripts page (v0.1.4)
+
+Same board and firmware, run from the app on Ubuntu after updating it to 0.1.4.
+
+| Step | Result |
+|---|---|
+| 47 Back up stored script | **Pass** |
+| 48 Try a file | Not reported. The same `try` passed in the terminal in step 37 |
+| 49 Store `servo_74_test.lisp` | **Pass** |
+| 50 Restore the engine control script, with its `hall-capture` native library | **Pass.** The engine then ran on the restored script |
