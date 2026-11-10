@@ -23,9 +23,9 @@ from ..config import MC_ROOT
 from ..errors import SafetyRefusal
 
 NOTE = ("A stored script runs at every power-up. Try a script first: it runs from RAM until the next power-up and "
-        "stores nothing. Storing backs up the old script and the config, then reads every byte back. Plain Lisp only "
-        "for now: scripts that import files, such as native libraries, are refused, but this board's own backups can "
-        "be restored.")  # fmt: skip
+        "stores nothing. Storing backs up the old script and the config, then reads every byte back. Scripts with "
+        "native libraries can be stored but not tried, and get a start-up guard: they wait 10 s after each power-up "
+        "before loading a library, so `sky code rescue` in a terminal can break a boot loop.")  # fmt: skip
 
 
 def _precheck(prog) -> None:
@@ -142,8 +142,8 @@ class ScriptsPage(QWidget):
 
         board.submit(job, done, self._failed, exclusive=True)
 
-    def _pick_script(self):
-        """(path, text, warnings) of a script that passed the content checks, or None."""
+    def _pick_script(self, *, native: bool):
+        """(path, text, warnings) of a script that passed the content checks, or None. native: storing allows them."""
         chosen = self.win.prompts.ask_script_path(self._last_dir)
         if not chosen:
             return None
@@ -155,13 +155,13 @@ class ScriptsPage(QWidget):
             self.win.prompts.error("Can't read the script", f"{path}: {e}")
             return None
         try:
-            return path, text, code.check_script(text)
+            return path, text, code.check_script(text, native=native)
         except SafetyRefusal as e:
             self.win.report(e)
             return None
 
     def try_file(self) -> None:
-        board, picked = self.win.board, self._pick_script()
+        board, picked = self.win.board, self._pick_script(native=False)
         if board is None or picked is None:
             return
         path, text, warnings = picked
@@ -184,14 +184,19 @@ class ScriptsPage(QWidget):
         board.submit(_precheck, checked, self.win.report, exclusive=True)
 
     def store_file(self) -> None:
-        picked = self._pick_script()
+        picked = self._pick_script(native=True)
         if picked is None:
             return
         path, text, warnings = picked
         try:
-            content = code.pack(text)
+            content, files = code.pack_script(text, path.parent)
         except SafetyRefusal as e:
             self.win.report(e)
+            return
+        libraries = code.library_lines(code.unpack_imports(content))
+        if code.uses_native(text) and not self.win.prompts.confirm_native(
+                len(files), f"{code.NATIVE_RISK} {code.GUARD_NOTE}", storing=True, libraries=libraries):  # fmt: skip
+            self.win.log("Cancelled. Nothing was written.")
             return
         self._store(content, path.name, warnings)
 
@@ -204,7 +209,12 @@ class ScriptsPage(QWidget):
         except SafetyRefusal as e:
             self.win.report(e)
             return
-        if imports and not self.win.prompts.confirm_native(imports, code.NATIVE_RISK):
+        risk = code.NATIVE_RISK
+        if not code.has_guard(code.script_text(doc["content"])):
+            risk += (" This backup has no start-up guard, so `sky code rescue` can't help if its library crashes. "
+                     "Storing the script from its file adds one.")  # fmt: skip
+        libraries = code.library_lines(code.unpack_imports(doc["content"]))
+        if imports and not self.win.prompts.confirm_native(imports, risk, libraries=libraries):
             self.win.log("Cancelled. Nothing was written.")
             return
         self._store(doc["content"], f"the script backup from {doc['created'][:19].replace('T', ' ')}", [])

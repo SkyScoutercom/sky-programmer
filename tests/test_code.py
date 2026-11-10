@@ -2,6 +2,7 @@
 import io
 import json
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -9,7 +10,7 @@ from sky_programmer import code
 from sky_programmer import protocol as p
 from sky_programmer.errors import CommsError, SafetyRefusal, VerifyFailed
 from sky_programmer.safety import check_packet, check_repl
-from sky_programmer.simulator import STORED_SCRIPT
+from sky_programmer.simulator import STORED_SCRIPT, FakeVesc
 
 SCRIPT = '(print "hello from the new script")\n'
 
@@ -456,7 +457,7 @@ def test_cli_restore_with_imports_needs_a_second_yes(sky, tmp_path):
     native = tmp_path / "native.json"
     native.write_text(json.dumps(doc))
     rc, out = run("code", "restore", str(native), "--engine-stopped")
-    assert rc == 2 and "reboot over and over" in out and fake.code_erases == 0
+    assert rc == 2 and "over and over" in out and "no start-up guard" in out and fake.code_erases == 0
     rc, out = run("code", "restore", str(native), "--engine-stopped", "--native-ok")
     assert rc == 0, out
     assert fake.stored_content() == content
@@ -467,3 +468,229 @@ def test_comms_errors_are_reported(board):
     fake.dead = True
     with pytest.raises(CommsError):
         code.read_code(prog)
+
+
+# ---------------------------------------------------------------------- native libraries and the start-up guard
+NATIVE_SCRIPT = '(import "lib/a.bin" \'liba)\n  ( import "b.bin" \'libb) ; second\n(load-native-lib liba)\n'
+
+
+def _native_folder(tmp_path):
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "a.bin").write_bytes(b"\x01\x02\x03")
+    (tmp_path / "b.bin").write_bytes(b"\x0a" * 7)
+    return tmp_path
+
+
+def test_imports_are_read_like_vesc_tool():
+    assert code.find_imports(NATIVE_SCRIPT) == [(1, "lib/a.bin", "liba"), (2, "b.bin", "libb")]
+    assert code.find_imports(';(import "x.bin" \'x)\n\t(import "y.bin" \'y)') == []  # comments and tabs: not imports
+    with pytest.raises(SafetyRefusal, match="line 1"):
+        code.find_imports('(import "x.bin")')
+
+
+def test_pack_script_lays_out_imports_and_adds_the_guard_once(tmp_path):
+    folder = _native_folder(tmp_path)
+    content, files = code.pack_script(NATIVE_SCRIPT, folder)
+    assert files == [("liba", 3), ("libb", 7)]
+    text = code.script_text(content)
+    assert code.has_guard(text) and text == code.GUARD + NATIVE_SCRIPT and text.count(code.GUARD_MARK) == 1
+    assert code.import_count(content) == 2
+    assert code.unpack_imports(content) == [("liba", b"\x01\x02\x03"), ("libb", b"\x0a" * 7)]
+    end = content.index(b"\0")
+    i = end + 3
+    for name in (b"liba", b"libb"):  # each file 4-byte aligned from the start of the content, then a NUL
+        stop = content.index(b"\0", i)
+        assert content[i:stop] == name
+        offset, size = struct.unpack_from(">ii", content, stop + 1)
+        assert offset % 4 == 0 and content[offset + size - 1] == 0
+        i = stop + 9
+    again, _ = code.pack_script(text, folder)  # an already guarded script isn't guarded twice
+    assert again == content
+
+
+def test_plain_scripts_are_unchanged(tmp_path):
+    assert code.pack_script(SCRIPT, tmp_path) == (code.pack(SCRIPT), [])
+
+
+def test_missing_and_package_imports_are_refused(tmp_path):
+    with pytest.raises(SafetyRefusal, match="not found"):
+        code.pack_script('(import "nope.bin" \'n)\n(load-native-lib n)', tmp_path)
+    with pytest.raises(SafetyRefusal, match="packages"):
+        code.pack_script('(import "pkg@x.vescpkg" \'n)', tmp_path)
+
+
+def test_native_words_only_when_storing():
+    with pytest.raises(SafetyRefusal, match="import"):
+        code.check_script(NATIVE_SCRIPT)
+    assert code.check_script(NATIVE_SCRIPT, native=True) == []
+    with pytest.raises(SafetyRefusal, match="image-save"):
+        code.check_script(NATIVE_SCRIPT + "(image-save)", native=True)
+
+
+BOARD_BACKUP = Path.home() / ".local/share/sky-programmer/backups/3c0039001347353430333537/code"
+
+
+@pytest.mark.skipif(not BOARD_BACKUP.is_dir(), reason="only on the bench laptop, with the real board's backup")
+def test_packing_matches_what_vesc_tool_stored_on_the_real_board(tmp_path):
+    doc = next((d for d in map(code.load_backup, sorted(BOARD_BACKUP.glob("*.json"))) if d["imports"]), None)
+    if doc is None:
+        pytest.skip("no backup with a native library")
+    text = code.script_text(doc["content"])
+    for (_, path, _), (_, data) in zip(code.find_imports(text), code.unpack_imports(doc["content"]), strict=True):
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_bytes(data)
+    assert code.pack_script(text, tmp_path, guard=code.has_guard(text))[0] == doc["content"]
+
+
+def test_storing_a_native_script(board, tmp_path):
+    fake, prog = board()
+    content, _ = code.pack_script(NATIVE_SCRIPT, _native_folder(tmp_path))
+    code.store(prog, content)
+    assert fake.stored_content() == content and code.has_guard(code.script_text(fake.stored_content()))
+
+
+def test_cli_store_native_needs_a_second_yes_and_adds_the_guard(sky, tmp_path):
+    fake, run = sky
+    folder = _native_folder(tmp_path)
+    script = folder / "engine.lisp"
+    script.write_text(NATIVE_SCRIPT)
+    rc, out = run("code", "store", str(script), "--engine-stopped")
+    assert rc == 2 and "liba (3 bytes)" in out and "start-up guard" in out and fake.code_erases == 0
+    rc, out = run("code", "store", str(script), "--engine-stopped", "--native-ok")
+    assert rc == 0, out
+    assert fake.stored_content() == code.pack_script(NATIVE_SCRIPT, folder)[0]
+
+
+def test_try_refuses_a_native_script(sky, tmp_path):
+    fake, run = sky
+    script = _native_folder(tmp_path) / "engine.lisp"
+    script.write_text(NATIVE_SCRIPT)
+    rc, out = run("code", "try", str(script), "--engine-stopped")
+    assert rc == 2 and "RAM" in out and fake.stream_starts == 0
+
+
+# ---------------------------------------------------------------------- rescue
+def _rescue(fake, *, appear_after=0, dead_first=False, ports=None, wait_s=60.0, backup_dir="."):
+    from sky_programmer.link import Link
+
+    calls, opens = {"n": 0}, {"n": 0}
+    dead = FakeVesc(clock=fake.clock)
+    dead.dead = True
+
+    def find_ports():
+        calls["n"] += 1
+        return (ports or ["/dev/ttyACM0"]) if calls["n"] > appear_after else []
+
+    def open_link(_port):
+        opens["n"] += 1
+        target = dead if dead_first and opens["n"] == 1 else fake
+        return Link(target, clock=fake.clock, sleep=fake.clock.sleep)
+
+    res = code.rescue(open_link, find_ports, backup_dir, wait_s=wait_s, clock=fake.clock, sleep=fake.clock.sleep,
+                      say=lambda *_: None)  # fmt: skip
+    return res, opens["n"]
+
+
+def test_rescue_waits_for_the_board_then_erases_its_script(board, tmp_path):
+    fake, _ = board()
+    res, opens = _rescue(fake, appear_after=20, backup_dir=tmp_path)
+    assert res["uuid"] == fake.uuid.hex() and opens == 1
+    assert fake.code_erases == 1 and fake.stored_content() is None and not fake.script_running
+    fake.power_cycle()
+    assert not fake.script_running  # the next boot runs no script
+
+
+def test_rescue_waits_again_when_the_board_resets_midway(board, tmp_path):
+    fake, _ = board()
+    res, opens = _rescue(fake, dead_first=True, backup_dir=tmp_path)
+    assert opens == 2 and fake.stored_content() is None
+
+
+def test_rescue_refuses_while_the_motor_turns(board, tmp_path):
+    fake, _ = board()
+    fake.erpm = 3000
+    with pytest.raises(SafetyRefusal, match="not idle"):
+        _rescue(fake, backup_dir=tmp_path)
+    assert fake.code_erases == 0
+
+
+def test_rescue_refuses_two_boards_and_gives_up_in_time(board, tmp_path):
+    fake, _ = board()
+    with pytest.raises(SafetyRefusal, match="more than one"):
+        _rescue(fake, ports=["/dev/ttyACM0", "/dev/ttyACM1"], backup_dir=tmp_path)
+    with pytest.raises(CommsError, match="HALL2-SWCLK"):
+        _rescue(fake, appear_after=10**9, wait_s=5.0, backup_dir=tmp_path)
+    assert fake.code_erases == 0
+
+
+def test_cli_rescue(board, tmp_path, capsys, monkeypatch):
+    from sky_programmer import cli
+
+    fake, prog = board()
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    monkeypatch.setattr(code, "RESCUE_SETTLE_S", 0.0)
+    argv = ["--port", "fake", "--backup-dir", str(prog.backup_dir), "code", "rescue", "--wait", "5"]
+    assert cli.main(argv, serial_factory=lambda _p: fake, ports=lambda: ["fake"]) == 2  # no statement, no erase
+    assert fake.code_erases == 0
+    assert cli.main([*argv, "--engine-stopped"], serial_factory=lambda _p: fake, ports=lambda: ["fake"]) == 0
+    assert "Erased" in capsys.readouterr().out and fake.stored_content() is None
+
+
+# ---------------------------------------------------------------------- review findings on native libraries
+def test_the_guard_only_waits_with_the_motor_still():
+    assert f"(if (< (abs (get-rpm)) {code.GUARD_IDLE_ERPM}) (sleep {code.GUARD_SECONDS}))" in code.GUARD
+    assert code.symbols(code.GUARD) == ["if", "<", "abs", "get-rpm", str(code.GUARD_IDLE_ERPM), "sleep",
+                                        str(code.GUARD_SECONDS)]  # fmt: skip
+
+
+def test_an_edited_guard_is_refused_not_trusted(tmp_path):
+    folder = _native_folder(tmp_path)
+    edited = code.GUARD.replace(f"(sleep {code.GUARD_SECONDS})", "(sleep 0)") + NATIVE_SCRIPT
+    assert not code.has_guard(edited)
+    with pytest.raises(SafetyRefusal, match="guard"):
+        code.check_script(edited, native=True)
+    assert code.has_guard(code.script_text(code.pack_script(NATIVE_SCRIPT, folder)[0]))
+
+
+@pytest.mark.parametrize("call", [
+    "(load-native-lib (bufcreate 64))", "(load-native-lib other)", "(load-native-lib)", "(apply load-native-lib x)",
+    "(unload-native-lib nope)",
+])  # fmt: skip
+def test_load_native_lib_must_name_an_import(call):
+    with pytest.raises(SafetyRefusal, match="must name one of this script's imports"):
+        code.check_script(f'(import "a.bin" \'liba)\n{call}\n', native=True)
+
+
+def test_naming_an_import_is_fine_and_names_must_be_ascii():
+    assert code.check_script('(import "a.bin" \'liba)\n(load-native-lib liba)\n(unload-native-lib liba)',
+                             native=True) == []  # fmt: skip
+    with pytest.raises(SafetyRefusal, match="ASCII"):
+        code.check_script('(import "a.bin" \'libä)\n(load-native-lib libä)', native=True)
+
+
+def test_library_lines_name_the_exact_build():
+    import hashlib
+
+    data = b"\x01\x02"
+    line, = code.library_lines([("liba", data)])
+    assert line == f"liba: 2 bytes, SHA-256 {hashlib.sha256(data).hexdigest()}"
+
+
+def test_rescue_only_erases_the_named_board(board, tmp_path):
+    from sky_programmer.link import Link
+
+    fake, _ = board()
+    with pytest.raises(SafetyRefusal, match="not 00"):
+        code.rescue(lambda _p: Link(fake, clock=fake.clock, sleep=fake.clock.sleep), lambda: ["/dev/ttyACM0"],
+                    tmp_path, uuid="00" * 12, wait_s=5, clock=fake.clock, sleep=fake.clock.sleep,
+                    say=lambda *_: None)  # fmt: skip
+    assert fake.code_erases == 0
+
+
+def test_rescue_backs_up_what_it_erases(board, tmp_path):
+    fake, _ = board()
+    before = fake.stored_content()
+    _rescue(fake, backup_dir=tmp_path)
+    saved = [code.load_backup(p) for p in code.list_backups(tmp_path, fake.uuid.hex())]
+    assert [d["reason"] for d in saved] == ["pre-rescue"] and saved[0]["content"] == before
+    assert fake.stored_content() is None

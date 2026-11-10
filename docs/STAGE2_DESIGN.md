@@ -58,8 +58,27 @@ backup can be restored.
 **Native libraries** (a `.bin` loaded with `load-native-lib`):
 - They can't be tried first: streaming ignores `import`, so a library's first run is always from flash.
 - A library that crashes at start-up can make the board reboot over and over, because a hard fault isn't a watchdog
-  reset. Recovery is the HALL2–SWCLK jumper at power-up, which erases the stored scripts, or an SWD programmer.
+  reset. The hardware recoveries are the HALL2–SWCLK jumper at power-up, which erases the stored scripts **and resets
+  the motor and app config to defaults** (`main.c`, `should_reset_config`), or an SWD programmer.
 - So storing a script with a native library needs a separate, explicit confirmation that names this risk.
+- **Start-up guard and rescue (built, not yet tried with a crashing library).** The firmware binds a script's imports
+  before it runs, but only runs a library when `load-native-lib` is evaluated (`lispif.c`, `lispif_c_lib.c`). USB
+  answers commands, the erase among them, in its own thread while the script sleeps (`comm_usb.c`), and the script
+  starts about 0.5 s after USB (`commands.c` waits for `main` to finish). So `sky code store` puts
+  `(sleep 10)` at the top of every script that uses native libraries, and `sky code rescue` waits for the board to
+  appear, waits 2 s for the script to start, then erases it (`lispif_stop` first). The next boot runs no script
+  (`lispif_restart`). It can't help once a library has loaded and wedged the board (an `init` that never returns, or
+  a `stop` function that faults), but the window comes before the load at every boot.
+- An EEPROM boot counter was considered and dropped: every EEPROM write releases the motor for 5 s
+  (`conf_general.c`), so clearing the counter while the engine runs isn't safe.
+- Packing matches VESC Tool's `lispPackImports` byte for byte for ASCII import names (non-ASCII names are refused:
+  VESC Tool sizes its table by characters but writes UTF-8). A test repacks the real board's backup to prove it.
+- The guard only waits while `(get-rpm)` is under 200 erpm: after a reset with the engine running, the engine script
+  must take over again within about a second. BLDC tracks a released, spinning motor's rpm (`mcpwm.c`, back-EMF in
+  `MC_STATE_OFF`), and the rescue refuses a turning motor anyway.
+- A native library is unchecked machine code: it can call `commands_process_packet`, `wipe_nvm` and `write_nvm`
+  (`vesc_c_if.h`). So `load-native-lib` may only name one of the script's imports directly, never an array built at
+  run time, and each library is shown with its SHA-256 before the second YES.
 - A library's source should be checked for `write_nvm`, `wipe_nvm` and `store_cfg`: `wipe_nvm` erases the bootloader
   sector.
 
@@ -67,7 +86,9 @@ backup can be restored.
 
 1. Lisp-only scripts: `backup`, `try`, `store`, `restore`, against a simulated board that follows the spec.
 2. Independent review, then a bench test with `servo_74_test.lisp`.
-3. Scripts with native libraries, once the recovery path on the Flipsky board is confirmed.
+3. Scripts with native libraries: built with the start-up guard and `sky code rescue`. Bench section I tries the
+   rescue on a healthy board; the deliberate-crash test waits for a hardware fallback (an ST-Link, or the HALL2
+   jumper with a config backup).
 4. Building C libraries (`make`), with the source checks above.
 5. The Scripts page in the desktop app: built for Lisp scripts (`gui/scripts_page.py`), on the same engine; bench section H.
 

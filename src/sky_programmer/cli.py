@@ -13,7 +13,7 @@ from pathlib import Path
 from . import APP_NAME, __version__, backup, code, config
 from .config import APP_ROOT, MC_ROOT
 from .errors import SafetyRefusal, SkyError
-from .link import Link, find_port, open_serial
+from .link import Link, find_port, list_ports, open_serial
 from .programmer import MONITOR_COLUMNS, Programmer
 
 ENGINE_PROMPT = "Engine stopped, propeller clear, supply stable? Type YES to write: "
@@ -268,9 +268,19 @@ def cmd_code_try(prog, args) -> int:
 
 def cmd_code_store(prog, args) -> int:
     text = _read_script(args.file)
-    for warning in code.check_script(text):
+    for warning in code.check_script(text, native=True):
         print(f"Warning: {warning}")
-    return _store_and_maybe_start(prog, args, code.pack(text), args.file)
+    content, files = code.pack_script(text, Path(args.file).parent)
+    if code.uses_native(text):
+        names = ", ".join(f"{name} ({size} bytes)" for name, size in files) or "none imported"
+        print(f"Native libraries: {names}.")
+        for line in code.library_lines(code.unpack_imports(content)):
+            print(f"  {line}")
+        print(code.NATIVE_RISK)
+        print(code.GUARD_NOTE)
+        if not args.native_ok and not _ask_yes("Type YES to store a script with native libraries: "):
+            raise SafetyRefusal("cancelled. Nothing was written.")
+    return _store_and_maybe_start(prog, args, content, args.file)
 
 
 def cmd_code_restore(prog, args) -> int:
@@ -278,9 +288,30 @@ def cmd_code_restore(prog, args) -> int:
     imports = code.check_restore(doc, prog.identify())
     if imports:
         print(f"This backup includes {imports} imported files, such as a native library. {code.NATIVE_RISK}")
+        if not code.has_guard(code.script_text(doc["content"])):
+            print("This backup has no start-up guard, so `sky code rescue` can't help if its library crashes. "
+                  "Storing the script from its file with `sky code store` adds one.")  # fmt: skip
         if not args.native_ok and not _ask_yes("Type YES to restore it anyway: "):
             raise SafetyRefusal("cancelled. Nothing was written.")
     return _store_and_maybe_start(prog, args, doc["content"], f"the backup from {doc['created']}")
+
+
+def cmd_code_rescue(args, serial_factory, ports) -> int:
+    """Runs without a board connection: it makes its own each time the board appears."""
+    print("This waits for the board to appear, then erases its stored script, so it starts with none. Your script "
+          "backups stay on this computer: `sky code backups`.")  # fmt: skip
+    print(code.GUARD_NOTE)
+    _confirm(args, "Engine stopped, propeller clear? Type YES to erase the stored script: ")
+
+    def find_ports():
+        return ([args.port] if args.port in ports() or os.path.exists(args.port) else []) if args.port else ports()
+
+    print(f"Waiting up to {args.wait:g} s. A boot-looping board is caught at its next power-up.")
+    res = code.rescue(lambda port: Link(serial_factory(port)), find_ports, args.backup_dir, uuid=args.uuid,
+                      wait_s=args.wait)  # fmt: skip
+    print(f"Erased. {res['hw']}, UUID {res['uuid']}, now starts with no script. Fix the library, then store the "
+          "script again.")  # fmt: skip
+    return 0
 
 
 def cmd_term(prog, args) -> int:
@@ -384,30 +415,41 @@ def build_parser() -> argparse.ArgumentParser:
         csp.add_argument("file")
         csp.add_argument("--engine-stopped", action="store_true", help="state the engine is stopped; skips the prompt")
         csp.add_argument("--start", action="store_true", help="start the stored script afterwards without asking")
-        if name == "restore":
-            csp.add_argument("--native-ok", action="store_true",
-                             help="restore a backup that includes native libraries without asking")  # fmt: skip
+        csp.add_argument("--native-ok", action="store_true",
+                         help="store a script or backup with native libraries without asking")  # fmt: skip
+    csp = add_code("rescue", cmd_code_rescue, "erase the stored script as the board powers up, to break a boot loop")
+    csp.add_argument("--engine-stopped", action="store_true", help="state the engine is stopped; skips the prompt")
+    csp.add_argument("--wait", type=float, default=code.RESCUE_WAIT_S, help="seconds to wait for the board")
+    csp.add_argument("--uuid", help="only erase the board with this UUID (see `sky status`)")
+    csp.set_defaults(no_link=True)
     sp = add("repl", cmd_repl, "LispBM console")
     sp.add_argument("-e", "--expr", help="evaluate one expression and exit")
     sp.add_argument("--allow-motor", action="store_true", help="allow words that move the motor or change limits")
     return ap
 
 
-def main(argv=None, *, serial_factory=open_serial) -> int:
-    args = build_parser().parse_args(argv)
-    args.backup_dir = args.backup_dir or str(backup.default_dir())
+def _run(job) -> int:
     try:
-        link = Link(serial_factory(args.port or find_port()))
-    except SkyError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return e.exit_code
-    try:
-        return args.func(Programmer(link, args.backup_dir), args)
+        return job()
     except SafetyRefusal as e:
         print(f"Refused: {e}", file=sys.stderr)
         return e.exit_code
     except SkyError as e:
         print(f"Error: {e}", file=sys.stderr)
         return e.exit_code
+
+
+def main(argv=None, *, serial_factory=open_serial, ports=list_ports) -> int:
+    args = build_parser().parse_args(argv)
+    args.backup_dir = args.backup_dir or str(backup.default_dir())
+    if getattr(args, "no_link", False):
+        return _run(lambda: args.func(args, serial_factory, ports))
+    try:
+        link = Link(serial_factory(args.port or find_port()))
+    except SkyError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return e.exit_code
+    try:
+        return _run(lambda: args.func(Programmer(link, args.backup_dir), args))
     finally:
         link.close()
