@@ -128,3 +128,24 @@ OFF. All steps were reported as passing; no output was sent back.
 
 Still untested: the rescue against a library that really crashes (on hold: it would need a fallback such as an SWD
 programmer), a reset with the engine running, and the Windows build with a real board.
+
+## 2026-11-12: section F, Windows (v0.1.7 installer)
+
+Same board, on a Windows PC with the v0.1.7 installer, using the app and the SKY terminal. Engine stopped, propeller
+off, RC channel 7 at OFF. Run as the steps W1-W14 given in the session; results as reported.
+
+| Step | Result |
+|---|---|
+| W1-W2 Port listed, connect, live values | **Pass** |
+| W3 First backup on this PC | **Pass** |
+| W4-W7 Read config, write `l_temp_fet_start` 84, survives a power-cycle, restore | **Pass** |
+| W8 Scripts page: back up the stored script | **Not done:** no script backup file was made, so the click most likely went to another page or button |
+| W9 Pull USB during live values | **Pass** |
+| W10 VESC Tool can't open the port while the app has it | **Pass** |
+| W11 `sky status` and `sky code backups` in the SKY terminal | **Pass.** "No script backups" was correct then, since W8 had made none |
+| W12 Rescue from the start screen, with Windows re-detecting the board | **Pass.** It backed up the script, then erased it |
+| W13 No script stored afterwards | **Pass** |
+| W14 Restore the engine script | **Pass** with `sky code restore` from the pre-rescue backup in the SKY terminal; the engine script runs again. A first try on the **Backups** page said "the board already matches this backup", which was correct: that page restores config, not scripts |
+
+Still untested: the rescue against a library that really crashes (on hold), and a reset with the engine running
+(planned in [RESET_TEST_PLAN.md](RESET_TEST_PLAN.md)).
