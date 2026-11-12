@@ -149,3 +149,19 @@ off, RC channel 7 at OFF. Run as the steps W1-W14 given in the session; results 
 
 Still untested: the rescue against a library that really crashes (on hold), and a reset with the engine running
 (planned in [RESET_TEST_PLAN.md](RESET_TEST_PLAN.md)).
+
+## 2026-11-12: reset test, stage 0 (engine off)
+
+From [RESET_TEST_PLAN.md](RESET_TEST_PLAN.md), on the Linux laptop with VESC Tool's Reboot as the reset. Engine off,
+channel 7 at OFF.
+
+| Step | Result |
+|---|---|
+| R1 Reboot from VESC Tool | **Pass.** The board came back on USB; VESC Tool didn't reconnect by itself |
+| R2 The throttle servo during a reset | **Pass.** Limp while the board restarted, then back to no throttle |
+| R3 Timing with the motor still | **Pass.** The guard waited: the script's first lines came 9.4 s after the board answered, with `hall_capture` loading only after it. No crank, no fault |
+
+**Stages 1 and 2 (engine running) can't be run as written:** the ignition noise drops USB, so the reset can't be
+sent and the board can't be watched. After a reset with the engine running, the guard's skip is checked against the
+firmware source (BLDC tracks a released motor's rpm), not measured. The plan describes an optional test turning the
+engine with a drill, ignition off.

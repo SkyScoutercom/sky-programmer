@@ -140,10 +140,16 @@ Try these in order. Steps 2 and 3 come from the firmware source and have not bee
    should stay usable after that kind of crash. Fix or erase the script in VESC Tool. A hard fault, such as a native
    library jumping to a bad address, resets through `NVIC_SystemReset` instead (`irq_handlers.c`), so Lisp starts
    again and the board can reboot over and over. If the script was stored by the SKY programmer, it starts with a
-   10 s guard before any library loads, whenever the motor is still at power-up: run `sky code rescue --engine-stopped` (or **Rescue a boot-looping board** on the app's start screen),
-   then power-cycle, and it erases the script in that window. This hasn't been tried with a crashing library yet. A
+   10 s guard before any library loads, whenever the motor is still at power-up: run
+   `sky code rescue --engine-stopped` (or **Rescue a boot-looping board** on the app's start screen), then
+   power-cycle, and it erases the script in that window. This hasn't been tried with a crashing library yet. A
    native library is unchecked machine code with full access to the board. A script without the guard, such as one
    stored by VESC Tool, needs step 3 or 4.
+
+   With the motor turning, as after a reset in flight, the guard doesn't wait. That's checked against the firmware
+   source, not measured: the engine's ignition noise drops USB, so a reset with the engine running couldn't be sent
+   or watched ([docs/RESET_TEST_PLAN.md](docs/RESET_TEST_PLAN.md)). Stage 0 there measured the guard waiting with the
+   motor still.
 3. **Config and script wipe:** connect HALL2 to SWCLK while powering up. The firmware resets the motor and app config
    and erases the stored Lisp and QML (`should_reset_config` in `main.c`). Afterwards use `sky restore` for the motor
    config; the app config and script have to go back through VESC Tool for now. Check that your board exposes these
