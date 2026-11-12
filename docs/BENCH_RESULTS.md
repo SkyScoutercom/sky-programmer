@@ -113,3 +113,18 @@ off, RC channel 7 at OFF.
 | Interface files against the board's `fw_info` | **Pass.** Both at `20cbb362` |
 | Warnings | `set_pad_mode` (the library sets up its hall input pin) and the script's own `eeprom-store` calls, as expected |
 | Store `engine_control.lisp` with the guard and the fresh build | **Pass.** 40,461 bytes stored and read back, then started |
+
+## 2026-11-12: section J, the desktop app's rescue and build from source
+
+Same board and firmware, the desktop app from `stage-1` after PR #16. Engine stopped, propeller off, RC channel 7 at
+OFF. All steps were reported as passing; no output was sent back.
+
+| Step | Result |
+|---|---|
+| 57 Scripts page: Build from source, store `engine_control.lisp` | **Pass** |
+| 58 Rescue a boot-looping board from the start screen, then power-cycle | **Pass** |
+| 59 No valid script stored afterwards | **Pass** |
+| 60 Store the engine script again and start it | **Pass** |
+
+Still untested: the rescue against a library that really crashes (on hold: it would need a fallback such as an SWD
+programmer), a reset with the engine running, and the Windows build with a real board.
