@@ -145,6 +145,36 @@ guard (section I) first.
 | 59 | Connect, Scripts page, **Back up stored script** | "No valid script is stored". The list also shows the "pre-rescue" backup |
 | 60 | Step 57 again, starting it at the end | The engine script is back and running |
 
+## K. The board on its UART instead of USB
+
+The firmware answers the same commands on its UART as on USB, so everything here works the same, at 115200 baud.
+The aim is a link that keeps working with the engine running, where USB drops out.
+
+**Hardware:** a **3.3 V** USB-to-UART adapter, ideally an **isolated** one (or a USB isolator in front of a normal
+one), so the laptop's ground isn't tied to the drone's while the generator runs. On the VESC's COMM port, TX and RX
+are free (see `WIRING.md` in vesc-starter, and check its pin order with a meter first):
+
+| Adapter | VESC COMM port |
+|---|---|
+| TX | RX/SDA |
+| RX | TX/SCL |
+| GND | GND |
+| 5 V / 3.3 V out | **not connected** |
+
+Keep the TTL wires short, with the adapter near the VESC. Engine stopped, propeller off, RC channel 7 at OFF.
+
+| # | Action | Expect |
+|---|---|---|
+| 61 | With the board on USB: `sky get --app app_to_use`, `sky get --app permanent_uart_enabled` and `sky get --app app_uart_baudrate` | UART works when `app_to_use` is one of `APP_UART`, `APP_PPM_UART` or `APP_ADC_UART`, or `permanent_uart_enabled` is true; the baud rate is 115200. If not, change it in VESC Tool (App Settings → General) and write the app config: this tool can't write app config. Don't choose a PPM app: the servo pin is an output |
+| 62 | Unplug the VESC's USB. Plug in the adapter. `sky status` | It finds `/dev/ttyUSB0` by itself and shows the same board, firmware and mode as on USB. With the USB board and the adapter both plugged in, it asks for `--port` instead of guessing |
+| 63 | `sky monitor --seconds 10` | Values update, and the script's messages arrive |
+| 64 | `sky backup`, then `sky set l_temp_fet_start=84`, then `sky restore <that backup>` | Verified write and restore, as over USB (steps 9–14) |
+| 65 | `sky code backup`, then `sky code restore <that backup> --start` | The engine script is stored again over UART and read back; it runs |
+| 66 | `sky code rescue --engine-stopped`, then power-cycle the board | Over UART the port doesn't disappear on a reset: the rescue keeps trying until the board answers, then "Found …", "Backed up its script first …", "Erased" |
+| 67 | `sky code restore <the pre-rescue backup> --start` | The engine script is back and running |
+| 68 | Desktop app: pick `/dev/ttyUSB0` in the port list, Connect | Same as over USB |
+| 69 | Later, with the engine running and the full precautions of `docs/RESET_TEST_PLAN.md`: `sky monitor --seconds 30` over the adapter | **The question this section is for:** does the UART link keep working with the ignition running? Note any "no reply" errors. If it holds, stages 1 and 2 of the reset test become possible over UART |
+
 Please send back any step that didn't match, with its output. Steps 6, 7, 11, 13, 15 and 17 test assumptions the
 simulated board can't confirm.
 
