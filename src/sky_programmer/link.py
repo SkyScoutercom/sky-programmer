@@ -81,12 +81,17 @@ def _port_number(name: str) -> int:
 
 
 def list_ports() -> list[str]:
-    """Ports that could be a board. On Windows that's USB COM ports only, so Bluetooth ones are never offered."""
+    """Ports that could be a board. On Windows that's USB COM ports only, so Bluetooth ones are never offered.
+
+    On Linux: boards on USB (ttyACM) first, then USB-to-UART adapters (ttyUSB), for a board on its UART pins. With
+    more than one, nothing is guessed: the operator picks the port.
+    """
     if sys.platform == "win32":
         from serial.tools import list_ports as ports
 
         return sorted((port.device for port in ports.comports() if port.vid is not None), key=_port_number)
-    return sorted(glob.glob("/dev/ttyACM*"))
+    found = sorted(glob.glob("/dev/ttyACM*")) + sorted(glob.glob("/dev/ttyUSB*"))
+    return list(dict.fromkeys(found))
 
 
 def find_port() -> str:

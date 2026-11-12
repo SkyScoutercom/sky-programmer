@@ -82,6 +82,10 @@ To check an install, run `"SKY programmer.exe" --self-test report.txt`. It uses 
 
 ## Commands
 
+The board can be on USB (`/dev/ttyACM*`, a COM port on Windows) or on its **UART** pins through a 3.3 V USB-to-UART
+adapter (`/dev/ttyUSB*`), at 115200 baud: see section K of [docs/BENCH_TEST.md](docs/BENCH_TEST.md). With more than one
+port present, pass `--port`.
+
 | Command | What it does |
 |---|---|
 | `sky status` | Board, firmware, live values, fault, script usage, BLDC/FOC mode |

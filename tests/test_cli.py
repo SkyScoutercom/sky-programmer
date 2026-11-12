@@ -272,3 +272,18 @@ def test_no_board_found(tmp_path, capsys, monkeypatch):
 def test_two_boards_are_never_guessed(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr("glob.glob", lambda *_: ["/dev/ttyACM0", "/dev/ttyACM1"])
     assert main(["--backup-dir", str(tmp_path), "status"]) == 2
+
+
+def test_uart_adapters_are_listed_after_usb_boards(monkeypatch):
+    from sky_programmer import link
+    from sky_programmer.errors import SafetyRefusal
+
+    found = {"/dev/ttyACM*": ["/dev/ttyACM0"], "/dev/ttyUSB*": ["/dev/ttyUSB1", "/dev/ttyUSB0"]}
+    monkeypatch.setattr("glob.glob", lambda pattern: found.get(pattern, []))
+    assert link.list_ports() == ["/dev/ttyACM0", "/dev/ttyUSB0", "/dev/ttyUSB1"]
+    found["/dev/ttyACM*"] = []
+    found["/dev/ttyUSB*"] = ["/dev/ttyUSB0"]
+    assert link.find_port() == "/dev/ttyUSB0"  # a board on its UART pins, through the only adapter
+    found["/dev/ttyACM*"] = ["/dev/ttyACM0"]
+    with pytest.raises(SafetyRefusal, match="more than one"):
+        link.find_port()  # a USB board and an adapter: never guessed
