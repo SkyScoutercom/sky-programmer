@@ -1,7 +1,10 @@
 # Plan: a board reset with the engine running
 
-Status: **plan for review. Nothing here has been run.** Read it all before the day, and run it only with a second
-person at the engine kill.
+Status (2026-11-12): **stage 0 passed** (results below and in [BENCH_RESULTS.md](BENCH_RESULTS.md)). **Stages 1 and
+2 can't be run as written:** with the engine running, its ignition noise drops USB, so neither the reset (VESC Tool's
+Reboot) nor the monitor can reach the board. The guard's behaviour after a reset with the engine running is
+therefore checked against the firmware source, not measured. See "A way to measure it later" for a test without the
+ignition.
 
 ## What it proves
 
@@ -74,17 +77,35 @@ decaying.
 | # | Action | Expect |
 |---|---|---|
 | R1 | Channel 7 at OFF. Connect VESC Tool, then press its **Reboot** | VESC Tool loses the board and the board comes back on USB in about 3 s. Note how VESC Tool behaves: you'll need to close it right after Reboot in later steps |
-| R2 | Move channel 7 to IDLE without starting (fuel off, ignition off, propeller off), so the servo holds its idle position. Reboot again from VESC Tool and watch the servo | **Write down what the servo does during the 3 s:** holds, goes limp, or moves. Stop here if it moves towards full throttle |
-| R3 | Channel 7 back to OFF. Close the SKY programmer app. Start the monitor loop below, then Reboot from VESC Tool and close VESC Tool at once | The monitor connects when the board comes back. With the motor still, the guard waits: the script's first message comes about 10 s after the monitor starts. That's the baseline |
+| R2 | Keep channel 7 at **OFF** (OFF → IDLE would arm a start and crank). The servo already sits at its no-throttle position (about 801 µs) in OFF. Reboot again from VESC Tool and watch the servo | **Write down what the servo does during the reset:** holds, goes limp, or moves. Stop here if it moves towards full throttle |
+| R3 | Close the SKY programmer app. Connect VESC Tool, start the monitor loop below, then press Reboot and close VESC Tool | The monitor connects when the board comes back. With the motor still, the guard waits: the script's first message comes about 10 s after the monitor starts. That's the baseline |
 
 The monitor loop waits for the board to come back, then records 40 s. Save it as `reset_watch.sh` and run
-`bash reset_watch.sh`:
+`sh reset_watch.sh` (type the command: copying it from a terminal window can pick up stray border characters):
 ```sh
 until sky status >/dev/null 2>&1; do sleep 0.2; done
 sky monitor --seconds 40 --log reset_$(date +%H%M%S).csv
 ```
+On Windows, as `reset_watch.bat` in the SKY terminal:
+```bat
+@echo off
+:wait
+sky status >nul 2>&1 || (timeout /t 1 >nul & goto wait)
+sky monitor --seconds 40 --log reset.csv
+```
 
-## Stage 1: engine running at IDLE
+### Stage 0 results (2026-11-12)
+
+| # | Result |
+|---|---|
+| R1 | **Pass.** The board rebooted and came back on USB. VESC Tool didn't reconnect by itself |
+| R2 | **Pass.** The servo went limp while the board restarted, then went back to no throttle. It didn't move towards open |
+| R3 | **Pass.** With the motor still, the first script lines came 9.4 s after the board answered: `hall_capture` loading (so the library loads only after the guard), then at 10.6 s `hall clock OK`, `engine control ready: switch ch7 OFF, then IDLE to start` and `RC ch7: OFF (902 us)`. No crank, no fault, bus steady at 45.8 V. `motor_a` moved from about 0.01 A to about −0.1 A when the script started |
+
+## Stage 1: engine running at IDLE (not possible as written)
+
+**Not possible as written:** the engine's ignition noise drops USB, so VESC Tool can't send the Reboot and the
+monitor can't read the board. Kept for reference, and for a setup that keeps USB working with the engine running.
 
 Only after stage 0 passed and the checklist is complete. Channel 7 at OFF, engine started the normal way (OFF →
 IDLE), warm, steady at idle. Battery on the bus, kill held.
@@ -98,7 +119,7 @@ IDLE), warm, steady at idle. Battery on the bus, kill held.
 
 **Pass:** R6 shows no 10 s wait and no crank, and nothing hit an abort limit.
 
-## Stage 2: engine running in TAKEOFF (only if stage 1 passed, and only if you decide to)
+## Stage 2: engine running in TAKEOFF (not possible as written, like stage 1)
 
 Same as stage 1, with channel 7 at TAKEOFF and the engine regulating before the reset. **Pass:** after the reset the
 script prints that it's regulating again, the generator output recovers, and nothing hit an abort limit. This is the
@@ -112,9 +133,17 @@ in-flight case, at a higher speed and load; decide on the day whether to run it.
   drone should handle it (for example a watchdog on the flight controller's side that cuts the engine if the
   generator stops reporting).
 - **The engine runs without the VESC for about 3 s after any reset**, even without the guard. The earlier estimate
-  of "about a second" was wrong; the boot time above is from the firmware source, and stage 1 measures it.
+  of "about a second" was wrong; the boot time above is from the firmware source.
+- **The engine's noise drops the laptop's USB link, but not the board.** When USB dropped with the starter and
+  engine running (bench step 39, 2026-11-09), the kernel logged USB protocol errors while the script kept running.
+  The noise reaches the USB link, not the board's processor, which makes an in-flight VESC reset less likely than
+  the USB drops suggest.
 
-## Afterwards
+## A way to measure it later (optional)
 
-Send back the video, the CSV files from the monitor loop, and what the servo did in R2. The results go in
-`docs/BENCH_RESULTS.md`.
+Turn the engine with an electric drill on the crankshaft, **ignition off and spark plug out**, so there's no
+ignition noise and USB stays up. The generator then spins without the engine running. With the board connected to
+VESC Tool, start `reset_watch.sh`, press Reboot while the drill turns the engine, and close VESC Tool. **Pass:** the
+script's first lines (`hall_capture: …`) come within about 1 s of "Board answered", not after about 10 s. A typical
+drill speed gives thousands of erpm, far above the guard's 200. Whether the drill can be coupled safely depends on
+the engine; plan it like stage 1, with the propeller off and people clear.
